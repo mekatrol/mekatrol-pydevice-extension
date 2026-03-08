@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src 'nonce-__NONCE__';">
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="__CSS_URI__">
+</head>
+<body>
+  <div class="wrap">
+    <h2>__TITLE__</h2>
+    <p class="hint">__HINT__</p>
+    <table>
+      <thead>
+        <tr>
+          <th>__PATH__</th>
+          <th class="scope">__SCOPE__</th>
+          <th class="status">__STATUS__</th>
+          <th class="action">__ACTION__</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="buttons">
+      <button id="syncToDevice" class="secondary">__SYNC_TO_DEVICE__</button>
+      <button id="syncFromDevice" class="secondary">__SYNC_FROM_DEVICE__</button>
+      <button id="close">__CLOSE__</button>
+    </div>
+  </div>
+  <script id="initial-state" type="application/json">__INITIAL_STATE__</script>
+  <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
+</body>
+</html>

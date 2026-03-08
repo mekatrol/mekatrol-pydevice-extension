@@ -1,0 +1,732 @@
+{
+  "name": "mekatrol-pydevice",
+  "publisher": "Mekatrol",
+  "displayName": "Mekatrol PyDevice",
+  "description": "A Python device developer extension.",
+  "icon": "images/logo.png",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:pydevice-device"
+  ],
+  "l10n": "./l10n",
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mekatrol.pydevice.initconfig",
+        "title": "Reset config"
+      },
+      {
+        "command": "mekatrol.pydevice.autodetectdevices",
+        "title": "Auto detect serial devices",
+        "icon": "$(search)"
+      },
+      {
+        "command": "mekatrol.pydevice.connectboard",
+        "title": "Connect to board",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "mekatrol.pydevice.connectboardwithpicker",
+        "title": "PyDevice: Connect to board (choose port)",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "mekatrol.pydevice.connectboardrecovery",
+        "title": "Recovery Connect",
+        "icon": {
+          "light": "images/connect-multi-light.svg",
+          "dark": "images/connect-multi-dark.svg"
+        }
+      },
+      {
+        "command": "mekatrol.pydevice.disconnectboard",
+        "title": "Disconnect from board"
+      },
+      {
+        "command": "mekatrol.pydevice.toggleboardconnection",
+        "title": "Toggle board connection"
+      },
+      {
+        "command": "mekatrol.pydevice.softreboot",
+        "title": "Soft reboot device",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "mekatrol.pydevice.setautoreconnect",
+        "title": "PyDevice: Set auto reconnect"
+      },
+      {
+        "command": "mekatrol.pydevice.setloggerautostart",
+        "title": "PyDevice: Set logger auto start"
+      },
+      {
+        "command": "mekatrol.pydevice.refreshsyncview",
+        "title": "PyDevice: Refresh sync explorer",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mekatrol.pydevice.explorerprerequisiteshint",
+        "title": "PyDevice: Explorer setup required",
+        "icon": "$(info)"
+      },
+      {
+        "command": "mekatrol.pydevice.explorerinitialiseworkspace",
+        "title": "PyDevice: Initialize PyDevice Workspace",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "mekatrol.pydevice.syncfromdevice",
+        "title": "PyDevice: Sync from device to computer",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mekatrol.pydevice.synctodevice",
+        "title": "PyDevice: Sync from computer to device",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "mekatrol.pydevice.syncnodefromdevice",
+        "title": "Sync from device to computer",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mekatrol.pydevice.syncnodetodevice",
+        "title": "Sync from computer to device",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "mekatrol.pydevice.opencomputersyncitem",
+        "title": "Open Computer Sync Item"
+      },
+      {
+        "command": "mekatrol.pydevice.pullandopendeviceitem",
+        "title": "Pull and Open Device Item"
+      },
+      {
+        "command": "mekatrol.pydevice.opendevicefile",
+        "title": "Open Device File"
+      },
+      {
+        "command": "mekatrol.pydevice.syncfilewithcomputer",
+        "title": "Sync File Diff (Device/Computer)",
+        "enablement": "viewItem != pydevice.deviceFileUnmapped && viewItem != pydevice.deviceFileExcludedUnmapped && viewItem != pydevice.deviceFileHostMissing && viewItem != pydevice.deviceFileExcludedHostMissing",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "mekatrol.pydevice.opensyncfiles",
+        "title": "Sync files",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "mekatrol.pydevice.openrepl",
+        "title": "PyDevice: Open REPL console"
+      },
+      {
+        "command": "mekatrol.pydevice.clearrepl",
+        "title": "PyDevice: Clear REPL console",
+        "icon": {
+          "light": "images/clear-all-light.svg",
+          "dark": "images/clear-all-dark.svg"
+        }
+      },
+      {
+        "command": "mekatrol.pydevice.clearreplhistory",
+        "title": "PyDevice: Clear REPL command history",
+        "icon": {
+          "light": "images/clear-history-light.svg",
+          "dark": "images/clear-history-dark.svg"
+        }
+      },
+      {
+        "command": "mekatrol.pydevice.createsyncfile",
+        "title": "Create File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "mekatrol.pydevice.createsyncfolder",
+        "title": "Create Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "mekatrol.pydevice.renamesyncpath",
+        "title": "Rename"
+      },
+      {
+        "command": "mekatrol.pydevice.deletesyncpath",
+        "title": "Delete"
+      },
+      {
+        "command": "mekatrol.pydevice.mapdevicehostfolder",
+        "title": "PyDevice: Map device to computer folder"
+      },
+      {
+        "command": "mekatrol.pydevice.unmapdevicehostfolder",
+        "title": "PyDevice: Unmap device from computer folder"
+      },
+      {
+        "command": "mekatrol.pydevice.adddevicelibraryfolder",
+        "title": "PyDevice: Add device library folder"
+      },
+      {
+        "command": "mekatrol.pydevice.removedevicelibraryfolder",
+        "title": "PyDevice: Remove device library folder"
+      },
+      {
+        "command": "mekatrol.pydevice.setdevicename",
+        "title": "PyDevice: Set device name"
+      },
+      {
+        "command": "mekatrol.pydevice.excludedevicefilefromsync",
+        "title": "Exclude From Sync"
+      },
+      {
+        "command": "mekatrol.pydevice.removedevicefilefromsyncexclusion",
+        "title": "Remove Sync Exclusion"
+      },
+      {
+        "command": "mekatrol.pydevice.closedeviceconnection",
+        "title": "Close Connection",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "mekatrol.pydevice.closealldeviceconnections",
+        "title": "Disconnect All Connections",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "mekatrol.pydevice.syncExplorer.focus",
+        "title": "Focus on PyDevice Explorer View"
+      },
+      {
+        "command": "mekatrol.pydevice.statusView.focus",
+        "title": "Focus on PyDevice View"
+      },
+      {
+        "command": "mekatrol.pydevice.replView.focus",
+        "title": "Focus on PyDevice REPL View"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "mekatrol-pydevice-sidebar",
+          "title": "PyDevice",
+          "icon": "images/pydevice-sidebar.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "mekatrol-pydevice-panel",
+          "title": "PyDevice REPL",
+          "icon": "images/pydevice-sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "mekatrol-pydevice-sidebar": [
+        {
+          "id": "mekatrol.pydevice.syncExplorer",
+          "name": "PyDevice Explorer"
+        },
+        {
+          "id": "mekatrol.pydevice.statusView",
+          "name": "PYDEVICE"
+        }
+      ],
+      "mekatrol-pydevice-panel": [
+        {
+          "id": "mekatrol.pydevice.replView",
+          "name": "REPL",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "mekatrol.pydevice.initconfig",
+          "when": "true"
+        },
+        {
+          "command": "mekatrol.pydevice.autodetectdevices",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboard",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboardwithpicker",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboardrecovery",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.disconnectboard",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.toggleboardconnection",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.softreboot",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.setautoreconnect",
+          "when": "true"
+        },
+        {
+          "command": "mekatrol.pydevice.setloggerautostart",
+          "when": "true"
+        },
+        {
+          "command": "mekatrol.pydevice.refreshsyncview",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.syncfromdevice",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.synctodevice",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.syncnodefromdevice",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.syncnodetodevice",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.opencomputersyncitem",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.pullandopendeviceitem",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.opendevicefile",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.syncfilewithcomputer",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.opensyncfiles",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.openrepl",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.clearrepl",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.clearreplhistory",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.createsyncfile",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.createsyncfolder",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.renamesyncpath",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.deletesyncpath",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.mapdevicehostfolder",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.unmapdevicehostfolder",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.setdevicename",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.adddevicelibraryfolder",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicelibraryfolder",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.excludedevicefilefromsync",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicefilefromsyncexclusion",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.closedeviceconnection",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.closealldeviceconnections",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.syncExplorer.focus",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.statusView.focus",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.replView.focus",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "mekatrol.pydevice.explorerinitialiseworkspace",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerHasWorkspace && !mekatrol.pydevice.explorerReady",
+          "group": "navigation@0"
+        },
+        {
+          "command": "mekatrol.pydevice.explorerprerequisiteshint",
+          "when": "view == mekatrol.pydevice.syncExplorer && !mekatrol.pydevice.explorerHasWorkspace",
+          "group": "navigation@0"
+        },
+        {
+          "command": "mekatrol.pydevice.refreshsyncview",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mekatrol.pydevice.syncfromdevice",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mekatrol.pydevice.synctodevice",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mekatrol.pydevice.clearrepl",
+          "when": "view == mekatrol.pydevice.replView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mekatrol.pydevice.clearreplhistory",
+          "when": "view == mekatrol.pydevice.replView",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "mekatrol.pydevice.opencomputersyncitem",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboardwithpicker",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
+          "group": "inline@1"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboardrecovery",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
+          "group": "inline@1.5"
+        },
+        {
+          "command": "mekatrol.pydevice.closealldeviceconnections",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot && mekatrol.pydevice.boardConnected",
+          "group": "inline@2"
+        },
+        {
+          "command": "mekatrol.pydevice.autodetectdevices",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
+          "group": "inline@3"
+        },
+        {
+          "command": "mekatrol.pydevice.autodetectdevices",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
+          "group": "navigation@2.5"
+        },
+        {
+          "command": "mekatrol.pydevice.opensyncfiles",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && mekatrol.pydevice.boardConnected && (viewItem == pydevice.deviceRoot || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded || viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mekatrol.pydevice.opendevicefile",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped)",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mekatrol.pydevice.syncfilewithcomputer",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded || viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileExcludedHostMissing)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mekatrol.pydevice.excludedevicefilefromsync",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFolder)",
+          "group": "navigation@5.1"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicefilefromsyncexclusion",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped || viewItem == pydevice.deviceFolderExcluded)",
+          "group": "navigation@5.2"
+        },
+        {
+          "command": "mekatrol.pydevice.createsyncfile",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostRoot || viewItem == pydevice.hostFolder || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped || viewItem == pydevice.hostDeviceMappingNode || viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing)",
+          "group": "navigation@6"
+        },
+        {
+          "command": "mekatrol.pydevice.createsyncfolder",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostRoot || viewItem == pydevice.hostFolder || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped || viewItem == pydevice.hostDeviceMappingNode || viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing)",
+          "group": "navigation@7"
+        },
+        {
+          "command": "mekatrol.pydevice.renamesyncpath",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded || viewItem == pydevice.hostFolder || viewItem == pydevice.hostFolderExcluded || viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded)",
+          "group": "navigation@8"
+        },
+        {
+          "command": "mekatrol.pydevice.deletesyncpath",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded || viewItem == pydevice.hostFolder || viewItem == pydevice.hostFolderExcluded || viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded)",
+          "group": "navigation@9"
+        },
+        {
+          "command": "mekatrol.pydevice.mapdevicehostfolder",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && mekatrol.pydevice.hasHostSyncChildFolders && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
+          "group": "navigation@10"
+        },
+        {
+          "command": "mekatrol.pydevice.unmapdevicehostfolder",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceIdNodeMapped",
+          "group": "navigation@11"
+        },
+        {
+          "command": "mekatrol.pydevice.adddevicelibraryfolder",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
+          "group": "navigation@11.2"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicelibraryfolder",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
+          "group": "navigation@11.3"
+        },
+        {
+          "command": "mekatrol.pydevice.setdevicename",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
+          "group": "navigation@12"
+        },
+        {
+          "command": "mekatrol.pydevice.closedeviceconnection",
+          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
+          "group": "navigation@13"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "mekatrol.pydevice.renamesyncpath",
+        "key": "f2",
+        "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && listFocus"
+      },
+      {
+        "command": "mekatrol.pydevice.deletesyncpath",
+        "key": "delete",
+        "mac": "backspace",
+        "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && listFocus"
+      },
+      {
+        "command": "mekatrol.pydevice.syncfilewithcomputer",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d",
+        "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && listFocus"
+      }
+    ],
+    "configuration": {
+      "title": "Mekatrol PyDevice",
+      "properties": {
+        "mekatrol.pydevice.verboseReplTransportLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show low-level REPL TX/RX transport logs in the extension output channel (for troubleshooting)."
+        },
+        "mekatrol.pydevice.deviceFileOpenWaitForConnectionMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 0,
+          "description": "How long to wait for board connection before opening/saving device files fails. Set to 0 to wait indefinitely."
+        },
+        "mekatrol.pydevice.mountHostInWorkspaceExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mount HOST sync folder as a workspace folder in the native Explorer. Disabled by default to avoid workspace-save prompts."
+        },
+        "mekatrol.pydevice.mountDeviceInWorkspaceExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mount DEVICE as a workspace folder in the native Explorer. Enable only if your tooling supports non-file workspace schemes."
+        },
+        "mekatrol.pydevice.replHistoryLimit": {
+          "type": "number",
+          "default": 100,
+          "minimum": 0,
+          "description": "Maximum number of REPL history commands retained per device. Oldest entries are removed when limit is exceeded. Set to 0 to disable history retention."
+        },
+        "mekatrol.pydevice.serialPortOperationTimeoutMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "description": "Maximum time to open or close a serial port during connect/probe/disconnect operations."
+        },
+        "mekatrol.pydevice.serialPortAggressiveRecoveryProbeTimeoutMs": {
+          "type": "number",
+          "default": 9000,
+          "minimum": 1000,
+          "description": "Timeout used for aggressive post-failure runtime probing that may include reboot-level recovery."
+        },
+        "mekatrol.pydevice.pythonProbeRuntimeInfoTimeoutMs": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 500,
+          "description": "Timeout for lightweight runtime probing (banner/version/ID checks) used during detection and reconnect."
+        },
+        "mekatrol.pydevice.pythonGetRuntimeInfoTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "description": "Timeout for full runtime info reads that may include additional board operations."
+        },
+        "mekatrol.pydevice.pythonExecRawCaptureTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 1000,
+          "description": "Timeout for executing Python commands over raw REPL and waiting for command output completion."
+        },
+        "mekatrol.pydevice.pythonSoftRebootTimeoutMs": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1000,
+          "description": "Timeout for soft reboot sequences triggered via raw REPL control flow."
+        },
+        "mekatrol.pydevice.pythonHardRebootTimeoutMs": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 150,
+          "description": "Timeout for hard reboot waits around DTR/RTS toggles or close/reopen restart paths."
+        },
+        "mekatrol.pydevice.pythonSerialWriteAckTimeoutMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 250,
+          "description": "Timeout for serial write acknowledgement and drain completion before command flow continues."
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "pydevice",
+        "label": "PyDevice",
+        "languages": [
+          "python"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "type",
+              "request",
+              "name"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "File path or URI to run on the connected device.",
+                "default": "${file}"
+              },
+              "timeoutMs": {
+                "type": "number",
+                "description": "Execution timeout in milliseconds.",
+                "default": 60000
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "pydevice",
+            "request": "launch",
+            "name": "PyDevice: Run Current File",
+            "program": "${file}",
+            "timeoutMs": 60000
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "npm run check-types && eslint src",
+    "test": "vscode-test",
+    "arch:prepare": "node -e \"require('fs').mkdirSync('docs/architecture', { recursive: true })\"",
+    "arch:dot": "npm run arch:prepare && depcruise --no-config src --include-only \"^src\" --exclude \"^src/test\" --output-type dot > docs/architecture/deps.dot",
+    "arch:svg": "npm run arch:dot && node scripts/render-arch-svg.js",
+    "arch:html": "npm run arch:prepare && depcruise --no-config src --include-only \"^src\" --exclude \"^src/test\" --output-type html > docs/architecture/deps.html",
+    "arch:auto": "node -e \"const { spawnSync } = require('child_process'); const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'; const hasDot = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['dot'], { stdio: 'ignore' }).status === 0; const script = hasDot ? 'arch:svg' : 'arch:html'; console.log('Running ' + script + (hasDot ? '' : ' (Graphviz dot not found)')); const result = spawnSync(npmCmd, ['run', script], { stdio: 'inherit' }); process.exit(result.status ?? 1);\""
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.3.3",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.3",
+    "eslint": "^10.0.2",
+    "mocha": "^11.7.5",
+    "dependency-cruiser": "^17.3.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "serialport": "^13.0.0"
+  }
+}

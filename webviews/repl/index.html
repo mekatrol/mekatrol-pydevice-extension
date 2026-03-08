@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src 'nonce-__NONCE__';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="__CSS_URI__">
+</head>
+<body>
+  <div class="layout">
+    <div id="tabs" class="tabs"></div>
+    <div id="toolbar" class="toolbar">
+      <button id="ctrlCButton" class="toolbar-button" type="button" aria-label="__CTRL_C_ARIA__">__CTRL_C__</button>
+      <button id="ctrlDButton" class="toolbar-button" type="button" aria-label="__CTRL_D_ARIA__">__CTRL_D__</button>
+      <button id="ctrlEButton" class="toolbar-button" type="button" aria-label="__CTRL_E_ARIA__">__CTRL_E__</button>
+      <button id="reopenPortButton" class="toolbar-button" type="button" aria-label="__REOPEN_PORT_ARIA__" style="display:none;">__REOPEN_PORT__</button>
+    </div>
+    <div id="content" class="console">
+      <pre id="output" class="output"></pre>
+      <div id="promptRow" class="prompt-row">
+        <span class="prompt-label">&gt;&gt;&gt; </span>
+        <input id="commandInput" class="input" type="text" spellcheck="false" aria-label="__REPL_INPUT_ARIA__" />
+        <span id="busyIndicator" class="busy hidden" aria-live="polite"><span class="spinner"></span>__RUNNING__</span>
+      </div>
+    </div>
+  </div>
+  <script id="initial-state" type="application/json">__INITIAL_STATE__</script>
+  <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
+</body>
+</html>

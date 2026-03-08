@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src __CSP_SOURCE__; script-src 'nonce-__NONCE__';">
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="__CSS_URI__">
+</head>
+<body>
+  <div class="wrap">
+    <h2>__TITLE__</h2>
+    <div class="direction">__SYNC_DIRECTION__ __DIRECTION__</div>
+    <p class="hint">__HINT__</p>
+    <table>
+      <thead>
+        <tr>
+          <th class="check"></th>
+          <th class="action">__ACTION__</th>
+          <th>__PATH__</th>
+          <th></th>
+          <th class="status">__STATUS__</th>
+          <th class="error"></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="buttons">
+      <button id="cancel" class="secondary">__CANCEL__</button>
+      <button id="continue">__CONTINUE__</button>
+      <button id="close" class="secondary" style="display:none">__CLOSE__</button>
+    </div>
+    <p id="summary" class="hint" style="display:none; margin-top:12px;"></p>
+  </div>
+  <script id="initial-state" type="application/json">__INITIAL_STATE__</script>
+  <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
+</body>
+</html>
