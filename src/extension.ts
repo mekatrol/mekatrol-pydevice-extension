@@ -34,6 +34,31 @@ export const activate = async (context: vscode.ExtensionContext) => {
   // Initialise output channel for logging
   initOutputChannel();
   logChannelOutput('Mekatrol PyDevice activated...', false);
+
+  const logStartup = (message: string, isError: boolean = false): void => {
+    const line = `[PyDevice startup] ${message}`;
+    if (isError) {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+    logChannelOutput(line, isError);
+  };
+
+  logStartup('Activation started.');
+  logStartup(
+    `Runtime: platform=${process.platform} arch=${process.arch} vscode=${vscode.version} node=${process.versions.node} electron=${process.versions.electron ?? 'unknown'}`
+  );
+
+  try {
+    const serialportModule = await import('serialport');
+    const hasSerialPortApi = typeof serialportModule.SerialPort?.list === 'function';
+    logStartup(`serialport module load: ok (has SerialPort.list=${hasSerialPortApi ? 'yes' : 'no'})`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logStartup(`serialport module load: failed - ${reason}`, true);
+  }
+
   await initialiseWorkspaceCache();
   const storedLoggerAutoStart = getWorkspaceCacheValue<boolean>(loggerAutoStartCacheKey);
   if (storedLoggerAutoStart === undefined) {
@@ -87,18 +112,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
   context.subscriptions.push({
     dispose: () => stopPyDeviceController()
   });
-
-  const logStartup = (message: string, isError: boolean = false): void => {
-    const line = `[PyDevice startup] ${message}`;
-    if (isError) {
-      console.error(line);
-    } else {
-      console.log(line);
-    }
-    logChannelOutput(line, isError);
-  };
-
-  logStartup('Activation started.');
 
   const runInit = async (name: string, action: () => void | Promise<void>): Promise<void> => {
     logStartup(`${name}: start`);
