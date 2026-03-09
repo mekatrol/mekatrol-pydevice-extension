@@ -10,7 +10,7 @@ const autoRevealOutputChannelOnLog = false;
 
 export const initOutputChannel = () => {
   // Create output channel for logging
-  outputChannel = vscode.window.createOutputChannel('Mektrol PyDevice');
+  outputChannel = vscode.window.createOutputChannel('Mekatrol PyDevice');
 };
 
 export const logChannelOutput = (content: string, show = true): void => {

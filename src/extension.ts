@@ -34,6 +34,31 @@ export const activate = async (context: vscode.ExtensionContext) => {
   // Initialise output channel for logging
   initOutputChannel();
   logChannelOutput('Mekatrol PyDevice activated...', false);
+
+  const logStartup = (message: string, isError: boolean = false): void => {
+    const line = `[PyDevice startup] ${message}`;
+    if (isError) {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+    logChannelOutput(line, isError);
+  };
+
+  logStartup('Activation started.');
+  logStartup(
+    `Runtime: platform=${process.platform} arch=${process.arch} vscode=${vscode.version} node=${process.versions.node} electron=${process.versions.electron ?? 'unknown'}`
+  );
+
+  try {
+    const serialportModule = await import('serialport');
+    const hasSerialPortApi = typeof serialportModule.SerialPort?.list === 'function';
+    logStartup(`serialport module load: ok (has SerialPort.list=${hasSerialPortApi ? 'yes' : 'no'})`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logStartup(`serialport module load: failed - ${reason}`, true);
+  }
+
   await initialiseWorkspaceCache();
   const storedLoggerAutoStart = getWorkspaceCacheValue<boolean>(loggerAutoStartCacheKey);
   if (storedLoggerAutoStart === undefined) {
@@ -88,27 +113,40 @@ export const activate = async (context: vscode.ExtensionContext) => {
     dispose: () => stopPyDeviceController()
   });
 
-  // Create commands
-  initCreateConfigCommand(context);
-  initAutoDetectDevicesCommand(context);
-  initConnectBoardCommand(context);
-  initRecoveryConnectCommand(context);
-  initDisconnectBoardCommand(context);
-  initSoftRebootBoardCommand(context);
-  initSetAutoReconnectCommand(context);
-  initSetLoggerAutoStartCommand(context, (enabled) => setLoggerLiveState(enabled));
-  initToggleBoardConnectionCommand(context);
-  initConnectionStateMonitor(context);
-  initReplView(context);
-  await tryReconnectBoardOnStartup(context);
+  const runInit = async (name: string, action: () => void | Promise<void>): Promise<void> => {
+    logStartup(`${name}: start`);
+    try {
+      await action();
+      logStartup(`${name}: ok`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logStartup(`${name}: failed - ${reason}`, true);
+    }
+  };
 
-  initExtensionStatusView(context);
+  // Create commands and views without allowing one failure to abort activation.
+  await runInit('initCreateConfigCommand', () => initCreateConfigCommand(context));
+  await runInit('initAutoDetectDevicesCommand', () => initAutoDetectDevicesCommand(context));
+  await runInit('initConnectBoardCommand', () => initConnectBoardCommand(context));
+  await runInit('initRecoveryConnectCommand', () => initRecoveryConnectCommand(context));
+  await runInit('initDisconnectBoardCommand', () => initDisconnectBoardCommand(context));
+  await runInit('initSoftRebootBoardCommand', () => initSoftRebootBoardCommand(context));
+  await runInit('initSetAutoReconnectCommand', () => initSetAutoReconnectCommand(context));
+  await runInit('initSetLoggerAutoStartCommand', () => initSetLoggerAutoStartCommand(context, (enabled) => setLoggerLiveState(enabled)));
+  await runInit('initToggleBoardConnectionCommand', () => initToggleBoardConnectionCommand(context));
+  await runInit('initConnectionStateMonitor', () => initConnectionStateMonitor(context));
+  await runInit('initReplView', () => initReplView(context));
+  await runInit('tryReconnectBoardOnStartup', () => tryReconnectBoardOnStartup(context));
+
+  await runInit('initExtensionStatusView', () => initExtensionStatusView(context));
 
   // Init device sync explorer
-  await initDeviceSyncExplorer(context, fileWatcher);
+  await runInit('initDeviceSyncExplorer', () => initDeviceSyncExplorer(context, fileWatcher));
 
   // Init Run/Debug integration
-  initPyDeviceDebug(context);
+  await runInit('initPyDeviceDebug', () => initPyDeviceDebug(context));
+
+  logStartup('Activation completed.');
 
 };
 
