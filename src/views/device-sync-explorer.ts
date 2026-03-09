@@ -5779,6 +5779,83 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     (segment: string) => model.resolveDeviceIdFromUriSegment(segment)
   );
 
+  const showExplorerPrerequisitesHint = async () => {
+    await vscode.commands.executeCommand('workbench.view.explorer');
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      const action = await showWarningMessage(
+        'Open a workspace folder first to enable PyDevice Explorer.',
+        'Open Folder'
+      );
+      if (action === 'Open Folder') {
+        await vscode.commands.executeCommand('vscode.openFolder');
+      }
+      return;
+    }
+
+    const configUri = workspaceFolder.uri.with({
+      path: path.posix.join(workspaceFolder.uri.path, configurationFileName)
+    });
+    try {
+      await vscode.workspace.fs.stat(configUri);
+    } catch {
+      const action = await showWarningMessage(
+        `${configurationFileName} was not found in this workspace. Create it to enable PyDevice Explorer.`,
+        `Create ${configurationFileName}`
+      );
+      if (action === `Create ${configurationFileName}`) {
+        await vscode.commands.executeCommand('mekatrol.pydevice.initconfig');
+      }
+      return;
+    }
+
+    showInformationMessage('PyDevice Explorer is ready.');
+  };
+
+  const initialiseWorkspace = async () => {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    if (!workspaceFolder) {
+      const action = await showWarningMessage(
+        'Open a workspace folder first to Initialize PyDevice Workspace.',
+        'Open Folder'
+      );
+      if (action === 'Open Folder') {
+        await vscode.commands.executeCommand('vscode.openFolder');
+      }
+      return;
+    }
+
+    const createdItems: string[] = [];
+    const existingItems: string[] = [];
+
+    const [configResult] = await createDefaultConfiguration();
+    if (configResult === PyDeviceConfigurationResult.Created) {
+      createdItems.push(configurationFileName);
+    } else {
+      existingItems.push(configurationFileName);
+    }
+
+    const createdCache = await createDefaultWorkspaceCacheFile();
+    if (createdCache) {
+      createdItems.push(workspaceCacheFileName);
+    } else {
+      existingItems.push(workspaceCacheFileName);
+    }
+
+    const summary = [
+      createdItems.length > 0 ? `Created: ${createdItems.join(', ')}` : undefined,
+      existingItems.length > 0 ? `Already existed: ${existingItems.join(', ')}` : undefined
+    ].filter((item): item is string => !!item).join(' | ');
+    const message = summary.length > 0 ? `PyDevice workspace initialized. ${summary}` : 'PyDevice workspace initialized.';
+    showInformationMessage(message);
+    logChannelOutput(message, true);
+    await model.refresh(true, true);
+  };
+
+  // Register critical explorer setup commands before risky view/provider setup.
+  context.subscriptions.push(vscode.commands.registerCommand(commandExplorerPrerequisitesHintId, showExplorerPrerequisitesHint));
+  context.subscriptions.push(vscode.commands.registerCommand(commandExplorerInitialiseWorkspaceId, initialiseWorkspace));
+
   const provider = new SyncTreeProvider(model);
 
   context.subscriptions.push(provider);
@@ -5923,78 +6000,6 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
       await revealConnectedDeviceNode(deviceId);
     }
   }));
-  context.subscriptions.push(vscode.commands.registerCommand(commandExplorerPrerequisitesHintId, async () => {
-    await vscode.commands.executeCommand('workbench.view.explorer');
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      const action = await showWarningMessage(
-        'Open a workspace folder first to enable PyDevice Explorer.',
-        'Open Folder'
-      );
-      if (action === 'Open Folder') {
-        await vscode.commands.executeCommand('vscode.openFolder');
-      }
-      return;
-    }
-
-    const configUri = workspaceFolder.uri.with({
-      path: path.posix.join(workspaceFolder.uri.path, configurationFileName)
-    });
-    try {
-      await vscode.workspace.fs.stat(configUri);
-    } catch {
-      const action = await showWarningMessage(
-        `${configurationFileName} was not found in this workspace. Create it to enable PyDevice Explorer.`,
-        `Create ${configurationFileName}`
-      );
-      if (action === `Create ${configurationFileName}`) {
-        await vscode.commands.executeCommand('mekatrol.pydevice.initconfig');
-      }
-      return;
-    }
-
-    showInformationMessage('PyDevice Explorer is ready.');
-  }));
-  context.subscriptions.push(vscode.commands.registerCommand(commandExplorerInitialiseWorkspaceId, async () => {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-      const action = await showWarningMessage(
-        'Open a workspace folder first to Initialize PyDevice Workspace.',
-        'Open Folder'
-      );
-      if (action === 'Open Folder') {
-        await vscode.commands.executeCommand('vscode.openFolder');
-      }
-      return;
-    }
-
-    const createdItems: string[] = [];
-    const existingItems: string[] = [];
-
-    const [configResult] = await createDefaultConfiguration();
-    if (configResult === PyDeviceConfigurationResult.Created) {
-      createdItems.push(configurationFileName);
-    } else {
-      existingItems.push(configurationFileName);
-    }
-
-    const createdCache = await createDefaultWorkspaceCacheFile();
-    if (createdCache) {
-      createdItems.push(workspaceCacheFileName);
-    } else {
-      existingItems.push(workspaceCacheFileName);
-    }
-
-    const summary = [
-      createdItems.length > 0 ? `Created: ${createdItems.join(', ')}` : undefined,
-      existingItems.length > 0 ? `Already existed: ${existingItems.join(', ')}` : undefined
-    ].filter((item): item is string => !!item).join(' | ');
-    const message = summary.length > 0 ? `PyDevice workspace initialized. ${summary}` : 'PyDevice workspace initialized.';
-    showInformationMessage(message);
-    logChannelOutput(message, true);
-    await model.refresh(true, true);
-  }));
-
   await model.refresh(true, true);
   void vscode.commands.executeCommand(`${syncViewId}.focus`);
   await ensureNativeExplorerRoots(model);
