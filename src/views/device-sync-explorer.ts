@@ -146,6 +146,7 @@ interface DeviceFileSyncRow {
   deviceRelativePath: string;
   isDirectory: boolean;
   status: DeviceFileSyncStatus;
+  excluded: boolean;
   libraryHostFolder?: string;
   libraryDeviceRoot?: string;
   scopeLabel: string;
@@ -1156,7 +1157,6 @@ class DeviceSyncModel {
     const scopedDeviceEntries = syncableDeviceEntries.filter(
       (entry) => !this.isWithinLibraryRoots(toRelativePath(entry.relativePath), libraryRoots)
     );
-    const computerEntryMap = new Map(scopedComputerEntries.map((entry) => [toRelativePath(entry.relativePath), entry]));
     const deviceEntryMap = new Map(scopedDeviceEntries.map((entry) => [toRelativePath(entry.relativePath), entry]));
     const protectedDevicePaths = this.getProtectedSyncPaths(scopedDeviceEntries, this.activeDeviceId);
     const desiredComputerPaths = new Set(scopedComputerEntries.map((entry) => toRelativePath(entry.relativePath)));
@@ -1236,6 +1236,115 @@ class DeviceSyncModel {
       syncOperations.push({ ...operation, id: this.toSyncOperationId(operation) });
     }
 
+    const libraries = this.getDeviceLibraryMappings(this.activeDeviceId ?? '').filter((library) => !library.missing);
+    for (const library of libraries) {
+      const libraryDeviceRoot = toRelativePath(library.devicePath);
+      if (!libraryDeviceRoot) {
+        continue;
+      }
+
+      const computerEntriesForLibrary = this.filterSyncableEntries(await scanComputerSyncEntries(library.hostAbsolutePath));
+      const scopedDeviceEntriesForLibrary = syncableDeviceEntries
+        .map((entry) => {
+          const deviceRelativePath = toRelativePath(entry.relativePath);
+          const scopedRelativePath = this.stripLibraryDeviceRoot(deviceRelativePath, libraryDeviceRoot);
+          if (scopedRelativePath === undefined || scopedRelativePath.length === 0) {
+            return undefined;
+          }
+          return {
+            ...entry,
+            relativePath: scopedRelativePath,
+            deviceRelativePath
+          };
+        })
+        .filter((entry): entry is (FileEntry & { deviceRelativePath: string }) => !!entry);
+      const scopedDeviceMapForLibrary = new Map(
+        scopedDeviceEntriesForLibrary.map((entry) => [toRelativePath(entry.relativePath), entry])
+      );
+      const desiredLibraryComputerPaths = new Set(
+        computerEntriesForLibrary.map((entry) => toRelativePath(entry.relativePath)).filter((item) => item.length > 0)
+      );
+
+      for (const entry of computerEntriesForLibrary) {
+        const scopedRelativePath = toRelativePath(entry.relativePath);
+        if (!scopedRelativePath) {
+          continue;
+        }
+
+        const deviceRelativePath = this.applyLibraryDeviceRoot(scopedRelativePath, libraryDeviceRoot);
+        const isExcluded = this.isPathExcludedFromSync(deviceRelativePath, this.activeDeviceId);
+        const deviceEntry = scopedDeviceMapForLibrary.get(scopedRelativePath);
+        if (!deviceEntry) {
+          const operation: Omit<SyncOperation, 'id'> = {
+            action: 'create',
+            relativePath: deviceRelativePath,
+            isDirectory: entry.isDirectory,
+            excluded: isExcluded,
+            defaultChecked: false,
+            deviceRelativePath,
+            computerRootPath: library.hostAbsolutePath,
+            computerRelativePath: scopedRelativePath
+          };
+          syncOperations.push({ ...operation, id: this.toSyncOperationId(operation) });
+          continue;
+        }
+
+        if (deviceEntry.isDirectory !== entry.isDirectory) {
+          const operation: Omit<SyncOperation, 'id'> = {
+            action: 'modify',
+            relativePath: deviceRelativePath,
+            isDirectory: entry.isDirectory,
+            excluded: isExcluded,
+            defaultChecked: false,
+            deviceRelativePath,
+            computerRootPath: library.hostAbsolutePath,
+            computerRelativePath: scopedRelativePath
+          };
+          syncOperations.push({ ...operation, id: this.toSyncOperationId(operation) });
+          continue;
+        }
+
+        if (entry.isDirectory) {
+          continue;
+        }
+
+        const needsWrite = !deviceEntry.sha1 || !entry.sha1 || deviceEntry.sha1 !== entry.sha1;
+        if (needsWrite) {
+          const operation: Omit<SyncOperation, 'id'> = {
+            action: 'modify',
+            relativePath: deviceRelativePath,
+            isDirectory: false,
+            excluded: isExcluded,
+            defaultChecked: false,
+            deviceRelativePath,
+            computerRootPath: library.hostAbsolutePath,
+            computerRelativePath: scopedRelativePath
+          };
+          syncOperations.push({ ...operation, id: this.toSyncOperationId(operation) });
+        }
+      }
+
+      for (const entry of scopedDeviceEntriesForLibrary) {
+        const scopedRelativePath = toRelativePath(entry.relativePath);
+        if (!scopedRelativePath || desiredLibraryComputerPaths.has(scopedRelativePath)) {
+          continue;
+        }
+
+        const isExcluded = this.isPathExcludedFromSync(entry.deviceRelativePath, this.activeDeviceId);
+        const operation: Omit<SyncOperation, 'id'> = {
+          action: 'delete',
+          relativePath: entry.deviceRelativePath,
+          isDirectory: entry.isDirectory,
+          excluded: isExcluded,
+          defaultChecked: false,
+          deviceRelativePath: entry.deviceRelativePath,
+          computerRootPath: library.hostAbsolutePath,
+          computerRelativePath: scopedRelativePath
+        };
+        syncOperations.push({ ...operation, id: this.toSyncOperationId(operation) });
+      }
+    }
+
     const syncDialog = await this.pickSyncOperations(
       'Sync Preview',
       'COMPUTER => DEVICE',
@@ -1295,15 +1404,21 @@ class DeviceSyncModel {
     for (const operation of fileOperations) {
       syncDialog.setStatus(operation.id, 'in_progress');
       try {
-        const computerEntry = computerEntryMap.get(operation.relativePath);
-        if (!computerEntry || computerEntry.isDirectory) {
+        const computerRootPath = operation.computerRootPath ?? this.syncRootPath;
+        const computerRelativePath = operation.computerRelativePath ?? operation.relativePath;
+        if (!computerRootPath) {
           syncDialog.setStatus(operation.id, 'skipped');
           continue;
         }
-        const computerPath = path.join(this.syncRootPath, operation.relativePath);
+        const computerPath = path.join(computerRootPath, computerRelativePath);
+        const computerStat = await fs.stat(computerPath);
+        if (!computerStat.isFile()) {
+          syncDialog.setStatus(operation.id, 'skipped');
+          continue;
+        }
         const content = await fs.readFile(computerPath);
         await writeDeviceFile(board, operation.relativePath, Buffer.from(content));
-        writtenDeviceFiles.push(operation.relativePath);
+        writtenDeviceFiles.push(operation.deviceRelativePath ?? operation.relativePath);
         syncDialog.setStatus(operation.id, 'success');
       } catch (error) {
         failedCount += 1;
@@ -1677,7 +1792,7 @@ class DeviceSyncModel {
       ? toRelativePath(scopedTargetNode.data.relativePath)
       : '';
     let currentRows = await this.buildDeviceFileSyncRows(deviceId, board, targetRelativePath);
-    let currentHasDifferences = currentRows.some((row) => row.status !== 'match');
+    let currentHasDifferences = this.hasActionableSyncDifferences(currentRows);
     const syncTargetNode = scopedTargetNode ?? new SyncNode(
       {
         side: 'device',
@@ -1767,14 +1882,14 @@ class DeviceSyncModel {
               deviceId,
               scope: event.scope,
               workspaceRelativePath: event.workspaceRelativePath,
-              hasDifferences: currentRows.some((row) => row.status !== 'match'),
+              hasDifferences: this.hasActionableSyncDifferences(currentRows),
               totalRows: currentRows.length,
               note: 'No-op means this event caused no additional UI delta; rows may already show differences.'
             });
             return;
           }
 
-          const refreshedHasDifferences = refreshedRows.some((row) => row.status !== 'match');
+          const refreshedHasDifferences = this.hasActionableSyncDifferences(refreshedRows);
           await pushRowsToPanel(refreshedRows, refreshedHasDifferences, 'watcher-auto-refresh');
           this.logSyncEvent('sync-view-auto-refresh-applied', 'Applied watcher-driven sync view refresh.', {
             deviceId,
@@ -1798,7 +1913,7 @@ class DeviceSyncModel {
               const settledRows = await this.buildDeviceFileSyncRows(deviceId, settledBoard, targetRelativePath);
               const settledChanged = JSON.stringify(settledRows) !== JSON.stringify(currentRows);
               if (settledChanged) {
-                const settledHasDifferences = settledRows.some((row) => row.status !== 'match');
+                const settledHasDifferences = this.hasActionableSyncDifferences(settledRows);
                 await pushRowsToPanel(settledRows, settledHasDifferences, 'watcher-stabilization-pass');
                 this.logSyncEvent('sync-view-auto-refresh-stabilized', 'Applied stabilization pass for watcher-driven sync view refresh.', {
                   deviceId,
@@ -1812,7 +1927,7 @@ class DeviceSyncModel {
                   deviceId,
                   scope: event.scope,
                   workspaceRelativePath: event.workspaceRelativePath,
-                  hasDifferences: currentRows.some((row) => row.status !== 'match'),
+                  hasDifferences: this.hasActionableSyncDifferences(currentRows),
                   totalRows: currentRows.length
                 });
               }
@@ -4409,17 +4524,18 @@ class DeviceSyncModel {
       return;
     }
 
-    const relativePath = this.toNodeScopedComputerRelativePath(node);
+    const computerRelativePath = this.toNodeScopedComputerRelativePath(node);
+    const deviceRelativePath = toRelativePath(node.data.relativePath);
     if (syncAvailability === 'hostMissing') {
       this.logSyncEvent('sync-diff-skipped', 'Sync diff skipped because host file is missing.', {
         deviceId,
-        relativePath
+        relativePath: computerRelativePath
       });
-      showWarningMessage(`The file "${relativePath}" does not exist on the mapped computer folder.`);
+      showWarningMessage(`The file "${computerRelativePath}" does not exist on the mapped computer folder.`);
       return;
     }
 
-    const computerPath = path.join(computerRootPath, relativePath);
+    const computerPath = path.join(computerRootPath, computerRelativePath);
     try {
       const stat = await fs.stat(computerPath);
       if (!stat.isFile()) {
@@ -4428,20 +4544,20 @@ class DeviceSyncModel {
     } catch {
       this.logSyncEvent('sync-diff-skipped', 'Sync diff skipped because host sync file does not exist.', {
         deviceId,
-        relativePath
+        relativePath: computerRelativePath
       });
-      showWarningMessage(`No computer sync file exists for "${relativePath}". Sync from device first.`);
+      showWarningMessage(`No computer sync file exists for "${computerRelativePath}". Sync from device first.`);
       return;
     }
 
     const computerUri = vscode.Uri.file(computerPath);
     const deviceSegment = encodeURIComponent(this.getDeviceUriSegment(deviceId));
-    const deviceUri = vscode.Uri.parse(`${deviceDocumentScheme}:/${deviceSegment}/${relativePath}?deviceId=${encodeURIComponent(deviceId)}`);
-    const title = `${relativePath} (Computer <-> Device)`;
+    const deviceUri = vscode.Uri.parse(`${deviceDocumentScheme}:/${deviceSegment}/${deviceRelativePath}?deviceId=${encodeURIComponent(deviceId)}`);
+    const title = `${deviceRelativePath} (Computer <-> Device)`;
     await vscode.commands.executeCommand('vscode.diff', computerUri, deviceUri, title, { preview: false });
     this.logSyncEvent('sync-diff-completed', 'Opened device/computer diff.', {
       deviceId,
-      relativePath,
+      relativePath: deviceRelativePath,
       elapsedMs: Date.now() - startedAt
     });
   }
@@ -4457,6 +4573,8 @@ class DeviceSyncModel {
     const intersectsTarget = (relativePath: string): boolean =>
       this.matchesTarget(toRelativePath(relativePath), scopedTarget, true)
       || this.matchesTarget(scopedTarget, toRelativePath(relativePath), true);
+    const isExcluded = (relativePath: string): boolean =>
+      this.isPathExcludedFromSync(toRelativePath(relativePath), deviceId);
 
     const syncableDeviceEntries = this.filterSyncableEntries(await listDeviceEntries(board))
       .filter((entry) => toRelativePath(entry.relativePath).length > 0)
@@ -4486,7 +4604,7 @@ class DeviceSyncModel {
 
     const rows: DeviceFileSyncRow[] = [];
     const addRow = (row: Omit<DeviceFileSyncRow, 'id'>): void => {
-      const id = `${row.deviceRelativePath}:${row.isDirectory ? 'dir' : 'file'}:${row.status}:${row.libraryHostFolder ?? ''}:${row.libraryDeviceRoot ?? ''}`;
+      const id = `${row.deviceRelativePath}:${row.isDirectory ? 'dir' : 'file'}:${row.status}:${row.excluded ? 'excluded' : 'included'}:${row.libraryHostFolder ?? ''}:${row.libraryDeviceRoot ?? ''}`;
       rows.push({ ...row, id });
     };
     const toStatus = (deviceEntry?: FileEntry, computerEntry?: FileEntry): DeviceFileSyncStatus => {
@@ -4522,6 +4640,7 @@ class DeviceSyncModel {
         deviceRelativePath: relativePath,
         isDirectory: (deviceFile?.isDirectory ?? computerFile?.isDirectory) ?? false,
         status: toStatus(deviceFile, computerFile),
+        excluded: isExcluded(relativePath),
         scopeLabel: syncRootPath ? this.getMappedHostFolder(deviceId) ?? 'mapped folder' : 'not mapped',
         scopeIcon: 'folder'
       });
@@ -4548,10 +4667,12 @@ class DeviceSyncModel {
 
       if (library.missing) {
         for (const [scopedPath, deviceFile] of scopedDeviceMap.entries()) {
+          const deviceRelativePath = this.applyLibraryDeviceRoot(scopedPath, libraryDeviceRoot);
           addRow({
-            deviceRelativePath: this.applyLibraryDeviceRoot(scopedPath, libraryDeviceRoot),
+            deviceRelativePath,
             isDirectory: deviceFile.isDirectory,
             status: 'missing_computer',
+            excluded: isExcluded(deviceRelativePath),
             libraryHostFolder: library.hostRelativePath,
             libraryDeviceRoot: library.devicePath,
             scopeLabel: `${library.hostRelativePath} (missing)`,
@@ -4567,12 +4688,14 @@ class DeviceSyncModel {
       const scopedComputerMap = new Map(scopedComputerFiles.map((entry) => [toRelativePath(entry.relativePath), entry]));
       const scopedPaths = new Set<string>([...scopedDeviceMap.keys(), ...scopedComputerMap.keys()]);
       for (const scopedPath of scopedPaths) {
+        const deviceRelativePath = this.applyLibraryDeviceRoot(scopedPath, libraryDeviceRoot);
         const deviceFile = scopedDeviceMap.get(scopedPath);
         const computerFile = scopedComputerMap.get(scopedPath);
         addRow({
-          deviceRelativePath: this.applyLibraryDeviceRoot(scopedPath, libraryDeviceRoot),
+          deviceRelativePath,
           isDirectory: (deviceFile?.isDirectory ?? computerFile?.isDirectory) ?? false,
           status: toStatus(deviceFile, computerFile),
+          excluded: isExcluded(deviceRelativePath),
           libraryHostFolder: library.hostRelativePath,
           libraryDeviceRoot: library.devicePath,
           scopeLabel: library.hostRelativePath,
@@ -4582,6 +4705,10 @@ class DeviceSyncModel {
     }
 
     return rows.sort((a, b) => a.deviceRelativePath.localeCompare(b.deviceRelativePath));
+  }
+
+  private hasActionableSyncDifferences(rows: DeviceFileSyncRow[]): boolean {
+    return rows.some((row) => row.status !== 'match');
   }
 
   private renderSyncPreviewHtml(
@@ -4649,6 +4776,7 @@ class DeviceSyncModel {
         filesDiffer: t('Files differ'),
         missingOnComputer: t('Missing on computer'),
         missingOnDevice: t('Missing on device'),
+        excluded: t('Excluded'),
         noFilesToSync: t('No files to sync'),
         compare: t('Compare')
       }
