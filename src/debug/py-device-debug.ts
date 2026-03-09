@@ -256,6 +256,11 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private async resolveTargetDeviceId(targetUri: vscode.Uri): Promise<string | undefined> {
     if (targetUri.scheme === deviceDocumentScheme) {
+      const queryDeviceId = new URLSearchParams(targetUri.query).get('deviceId')?.trim();
+      if (queryDeviceId) {
+        return queryDeviceId;
+      }
+
       const segments = toRelativePath(targetUri.path.replace(/^\/+/, '')).split('/').filter(Boolean);
       if (segments.length > 1) {
         try {
@@ -271,6 +276,8 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
     if (targetUri.scheme === 'file') {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (workspaceFolder) {
+        const connectedDevices = getConnectedPyDevices();
+        const connectedById = new Map(connectedDevices.map((item) => [item.deviceId, item]));
         const config = await loadConfiguration();
         const mappings = Object.entries(getDeviceHostFolderMappings(config))
           .map(([deviceId, folder]) => ({ deviceId, folder: toRelativePath(folder) }))
@@ -281,11 +288,16 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
             (item) => workspaceRelative === item.folder || workspaceRelative.startsWith(`${item.folder}/`)
           );
           if (mappedMatches.length === 1) {
-            return mappedMatches[0].deviceId;
+            const mappedDeviceId = mappedMatches[0].deviceId;
+            if (connectedById.has(mappedDeviceId)) {
+              return mappedDeviceId;
+            }
+            if (connectedDevices.length === 1) {
+              return connectedDevices[0].deviceId;
+            }
           }
 
           if (mappedMatches.length > 1) {
-            const connectedById = new Map(getConnectedPyDevices().map((item) => [item.deviceId, item]));
             const options = mappedMatches
               .map((item) => connectedById.get(item.deviceId))
               .filter((item): item is NonNullable<typeof item> => Boolean(item));
