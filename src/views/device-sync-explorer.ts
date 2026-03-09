@@ -147,6 +147,8 @@ interface DeviceFileSyncRow {
   isDirectory: boolean;
   status: DeviceFileSyncStatus;
   excluded: boolean;
+  runStatus?: SyncOperationRunStatus;
+  runErrorText?: string;
   libraryHostFolder?: string;
   libraryDeviceRoot?: string;
   scopeLabel: string;
@@ -1793,18 +1795,6 @@ class DeviceSyncModel {
       : '';
     let currentRows = await this.buildDeviceFileSyncRows(deviceId, board, targetRelativePath);
     let currentHasDifferences = this.hasActionableSyncDifferences(currentRows);
-    const syncTargetNode = scopedTargetNode ?? new SyncNode(
-      {
-        side: 'device',
-        relativePath: '',
-        isDirectory: true,
-        deviceId,
-        isDeviceIdNode: true
-      },
-      this.getDeviceDisplayName(deviceId),
-      vscode.TreeItemCollapsibleState.Collapsed
-    );
-
     const panel = vscode.window.createWebviewPanel(
       'pydevice.syncFiles',
       `Sync Files: ${this.getDeviceDisplayName(deviceId)}`,
@@ -1979,16 +1969,73 @@ class DeviceSyncModel {
       const typed = message as {
         type?: string;
         rowId?: string;
+        selectedRowIds?: string[];
       };
       if (typed.type !== 'compare' || typeof typed.rowId !== 'string') {
         if (typed.type === 'sync_to_device') {
           this.logSyncEvent('sync-view-action', 'Sync view requested sync computer to device.', { deviceId });
-          void this.syncNodeToDevice(syncTargetNode);
+          const selected = new Set(
+            Array.isArray(typed.selectedRowIds)
+              ? typed.selectedRowIds.filter((id): id is string => typeof id === 'string')
+              : []
+          );
+          void (async () => {
+            const connectedBoard = getConnectedPyDevice(deviceId);
+            if (!connectedBoard) {
+              showWarningMessage('Connect to a board before syncing to device.');
+              return;
+            }
+
+            const setStatus = async (rowId: string, status: SyncOperationRunStatus, errorText?: string): Promise<void> => {
+              const nextRows = currentRows.map((row) => (row.id === rowId
+                ? { ...row, runStatus: status, runErrorText: errorText }
+                : row));
+              await pushRowsToPanel(nextRows, this.hasActionableSyncDifferences(nextRows), 'sync-view-status-update-to-device');
+            };
+
+            await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'to_device', currentRows, selected, setStatus);
+            const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
+            const mergedRows = refreshedRows.map((row) => {
+              const previous = currentRows.find((item) => item.id === row.id);
+              return previous?.runStatus
+                ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
+                : row;
+            });
+            await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-to-device');
+          })();
           return;
         }
         if (typed.type === 'sync_from_device') {
           this.logSyncEvent('sync-view-action', 'Sync view requested sync device to computer.', { deviceId });
-          void this.syncNodeFromDevice(syncTargetNode);
+          const selected = new Set(
+            Array.isArray(typed.selectedRowIds)
+              ? typed.selectedRowIds.filter((id): id is string => typeof id === 'string')
+              : []
+          );
+          void (async () => {
+            const connectedBoard = getConnectedPyDevice(deviceId);
+            if (!connectedBoard) {
+              showWarningMessage('Connect to a board before syncing from device.');
+              return;
+            }
+
+            const setStatus = async (rowId: string, status: SyncOperationRunStatus, errorText?: string): Promise<void> => {
+              const nextRows = currentRows.map((row) => (row.id === rowId
+                ? { ...row, runStatus: status, runErrorText: errorText }
+                : row));
+              await pushRowsToPanel(nextRows, this.hasActionableSyncDifferences(nextRows), 'sync-view-status-update-from-device');
+            };
+
+            await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'from_device', currentRows, selected, setStatus);
+            const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
+            const mergedRows = refreshedRows.map((row) => {
+              const previous = currentRows.find((item) => item.id === row.id);
+              return previous?.runStatus
+                ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
+                : row;
+            });
+            await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-from-device');
+          })();
           return;
         }
         if (typed.type === 'close') {
@@ -4711,6 +4758,203 @@ class DeviceSyncModel {
     return rows.some((row) => row.status !== 'match');
   }
 
+  private getSyncActionForRow(
+    row: DeviceFileSyncRow,
+    direction: 'to_device' | 'from_device'
+  ): SyncAction | undefined {
+    if (row.status === 'match') {
+      return undefined;
+    }
+    if (row.status === 'mismatch') {
+      return 'modify';
+    }
+    if (direction === 'to_device') {
+      return row.status === 'missing_device' ? 'create' : 'delete';
+    }
+    return row.status === 'missing_computer' ? 'create' : 'delete';
+  }
+
+  private toSyncOperationFromSyncRow(
+    deviceId: string,
+    row: DeviceFileSyncRow,
+    direction: 'to_device' | 'from_device'
+  ): SyncOperation | undefined {
+    const action = this.getSyncActionForRow(row, direction);
+    if (!action) {
+      return undefined;
+    }
+
+    const deviceRelativePath = toRelativePath(row.deviceRelativePath);
+    if (!deviceRelativePath) {
+      return undefined;
+    }
+
+    if (row.libraryHostFolder && row.libraryDeviceRoot) {
+      const library = this.getLibraryMappingByHostFolder(deviceId, row.libraryHostFolder);
+      const computerRootPath = library?.hostAbsolutePath ?? this.resolveWorkspaceRelativePath(row.libraryHostFolder);
+      const computerRelativePath = this.stripLibraryDeviceRoot(deviceRelativePath, row.libraryDeviceRoot);
+      if (!computerRootPath || computerRelativePath === undefined) {
+        return undefined;
+      }
+      const operation: Omit<SyncOperation, 'id'> = {
+        action,
+        relativePath: deviceRelativePath,
+        isDirectory: row.isDirectory,
+        excluded: row.excluded,
+        deviceRelativePath,
+        computerRootPath,
+        computerRelativePath
+      };
+      return { ...operation, id: this.toSyncOperationId(operation) };
+    }
+
+    if (!this.syncRootPath) {
+      return undefined;
+    }
+
+    const operation: Omit<SyncOperation, 'id'> = {
+      action,
+      relativePath: deviceRelativePath,
+      isDirectory: row.isDirectory,
+      excluded: row.excluded,
+      deviceRelativePath,
+      computerRootPath: this.syncRootPath,
+      computerRelativePath: deviceRelativePath
+    };
+    return { ...operation, id: this.toSyncOperationId(operation) };
+  }
+
+  private async runSyncFromSyncViewRows(
+    deviceId: string,
+    board: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
+    direction: 'to_device' | 'from_device',
+    rows: DeviceFileSyncRow[],
+    selectedRowIds: Set<string>,
+    updateStatus: (rowId: string, status: SyncOperationRunStatus, errorText?: string) => Promise<void>
+  ): Promise<void> {
+    const operations = rows
+      .map((row) => ({ row, operation: this.toSyncOperationFromSyncRow(deviceId, row, direction) }))
+      .filter((item): item is { row: DeviceFileSyncRow; operation: SyncOperation } => !!item.operation);
+
+    const selectedOps = operations.filter((item) => selectedRowIds.has(item.row.id));
+    const unselectedOps = operations.filter((item) => !selectedRowIds.has(item.row.id));
+    for (const item of selectedOps) {
+      await updateStatus(item.row.id, 'pending');
+    }
+    for (const item of unselectedOps) {
+      await updateStatus(item.row.id, 'skipped');
+    }
+
+    let failedCount = 0;
+    const deletes = selectedOps
+      .filter((item) => item.operation.action === 'delete')
+      .sort((a, b) => b.operation.relativePath.length - a.operation.relativePath.length);
+    for (const item of deletes) {
+      await updateStatus(item.row.id, 'in_progress');
+      try {
+        if (direction === 'to_device') {
+          await deleteDevicePath(board, item.operation.relativePath);
+          await this.removeSyncExclusionsForDeletedDevicePath(deviceId, item.operation.relativePath, item.operation.isDirectory);
+          if (this.notifyDevicePathDeleted) {
+            await this.notifyDevicePathDeleted(item.operation.relativePath, item.operation.isDirectory);
+          }
+        } else {
+          const computerRootPath = item.operation.computerRootPath ?? this.syncRootPath;
+          const computerRelativePath = item.operation.computerRelativePath ?? item.operation.relativePath;
+          if (!computerRootPath) {
+            await updateStatus(item.row.id, 'skipped');
+            continue;
+          }
+          await fs.rm(path.join(computerRootPath, computerRelativePath), { recursive: true, force: true });
+        }
+        await updateStatus(item.row.id, 'success');
+      } catch (error) {
+        failedCount += 1;
+        await updateStatus(item.row.id, 'error', this.toErrorMessage(error));
+      }
+    }
+
+    const dirOps = selectedOps
+      .filter((item) => item.operation.action !== 'delete' && item.operation.isDirectory)
+      .sort((a, b) => a.operation.relativePath.length - b.operation.relativePath.length);
+    for (const item of dirOps) {
+      await updateStatus(item.row.id, 'in_progress');
+      try {
+        if (direction === 'to_device') {
+          await createDeviceDirectory(board, item.operation.relativePath);
+        } else {
+          const computerRootPath = item.operation.computerRootPath ?? this.syncRootPath;
+          const computerRelativePath = item.operation.computerRelativePath ?? item.operation.relativePath;
+          if (!computerRootPath) {
+            await updateStatus(item.row.id, 'skipped');
+            continue;
+          }
+          const computerPath = path.join(computerRootPath, computerRelativePath);
+          try {
+            const stat = await fs.stat(computerPath);
+            if (!stat.isDirectory()) {
+              await fs.rm(computerPath, { recursive: true, force: true });
+            }
+          } catch {
+            // Path does not exist; create below.
+          }
+          await fs.mkdir(computerPath, { recursive: true });
+        }
+        await updateStatus(item.row.id, 'success');
+      } catch (error) {
+        failedCount += 1;
+        await updateStatus(item.row.id, 'error', this.toErrorMessage(error));
+      }
+    }
+
+    const writtenDeviceFiles: string[] = [];
+    const fileOps = selectedOps.filter((item) => item.operation.action !== 'delete' && !item.operation.isDirectory);
+    for (const item of fileOps) {
+      await updateStatus(item.row.id, 'in_progress');
+      try {
+        const computerRootPath = item.operation.computerRootPath ?? this.syncRootPath;
+        const computerRelativePath = item.operation.computerRelativePath ?? item.operation.relativePath;
+        const deviceRelativePath = item.operation.deviceRelativePath ?? item.operation.relativePath;
+        if (!computerRootPath) {
+          await updateStatus(item.row.id, 'skipped');
+          continue;
+        }
+        const computerPath = path.join(computerRootPath, computerRelativePath);
+
+        if (direction === 'to_device') {
+          const content = await fs.readFile(computerPath);
+          await writeDeviceFile(board, deviceRelativePath, Buffer.from(content));
+          writtenDeviceFiles.push(deviceRelativePath);
+        } else {
+          const content = await readDeviceFile(board, deviceRelativePath);
+          await fs.mkdir(path.dirname(computerPath), { recursive: true });
+          await fs.writeFile(computerPath, content);
+        }
+        await updateStatus(item.row.id, 'success');
+      } catch (error) {
+        failedCount += 1;
+        await updateStatus(item.row.id, 'error', this.toErrorMessage(error));
+      }
+    }
+
+    this.deviceEntries = await listDeviceEntries(board);
+    if (this.syncRootPath) {
+      this.computerEntries = await scanComputerSyncEntries(this.syncRootPath);
+    }
+    this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
+    this.onDidChangeDataEmitter.fire();
+    if (writtenDeviceFiles.length > 0 && this.notifyDeviceFilesChanged) {
+      await this.notifyDeviceFilesChanged(writtenDeviceFiles);
+    }
+
+    const directionLabel = direction === 'to_device' ? 'to device' : 'from device';
+    const summary = failedCount > 0
+      ? `Sync ${directionLabel} finished with ${failedCount} error(s).`
+      : `Sync ${directionLabel} complete.`;
+    showInformationMessage(summary);
+    logChannelOutput(summary, true);
+  }
+
   private renderSyncPreviewHtml(
     webview: vscode.Webview,
     titleText: string,
@@ -4777,6 +5021,12 @@ class DeviceSyncModel {
         missingOnComputer: t('Missing on computer'),
         missingOnDevice: t('Missing on device'),
         excluded: t('Excluded'),
+        pending: t('pending'),
+        inProgress: t('in progress'),
+        success: t('success'),
+        skipped: t('skipped'),
+        error: t('error'),
+        excludedPathNote: t('this path is configured to be excluded by default'),
         noFilesToSync: t('No files to sync'),
         compare: t('Compare')
       }
