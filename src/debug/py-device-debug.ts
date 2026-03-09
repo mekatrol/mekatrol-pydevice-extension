@@ -135,27 +135,28 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         : pyDeviceInternalTimeouts.debugExecutionTimeoutMs;
 
       const command = this.buildExecutionCommand(script, this.displayPath(targetUri));
-      const { stdout, stderr } = await board.execRawCapture(command, timeoutMs);
-      const normalisedStdout = this.normaliseLineEndings(stdout);
-      const normalisedStderr = this.normaliseLineEndings(stderr);
+      const streamOutput = (chunk: string, category: 'console' | 'stderr') => {
+        const normalised = this.normaliseLineEndings(chunk);
+        if (normalised.length === 0) {
+          return;
+        }
+        appendDeviceReplOutput(targetDeviceId, normalised);
+        this.sendEvent('output', { category, output: normalised });
+        logChannelOutput(normalised, true);
+      };
 
-      if (normalisedStdout.length > 0) {
-        logChannelOutput(normalisedStdout, true);
-        appendDeviceReplOutput(targetDeviceId, normalisedStdout);
-        this.sendEvent('output', {
-          category: 'console',
-          output: this.ensureTrailingNewline(normalisedStdout)
-        });
-      }
+      const { stderr } = await board.execRawCaptureStreaming(
+        command,
+        timeoutMs,
+        (chunk) => streamOutput(chunk, 'console'),
+        (chunk) => {
+          exitCode = 1;
+          streamOutput(chunk, 'stderr');
+        }
+      );
 
-      if (normalisedStderr.length > 0) {
+      if (stderr.trim().length > 0) {
         exitCode = 1;
-        logChannelOutput(normalisedStderr, true);
-        appendDeviceReplOutput(targetDeviceId, normalisedStderr);
-        this.sendEvent('output', {
-          category: 'console',
-          output: this.ensureTrailingNewline(normalisedStderr)
-        });
       }
 
       logChannelOutput(`Run on device ${targetDeviceId} completed: ${this.displayPath(targetUri)}`, true);
@@ -338,6 +339,24 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private buildExecutionCommand(script: string, fileName: string): string {
     return [
+      'import builtins as __pydevice_builtins',
+      'import sys as __pydevice_sys',
+      '__pydevice_print = __pydevice_builtins.print',
+      'def __pydevice_print_flush(*args, **kwargs):',
+      '    __pydevice_kwargs = dict(kwargs)',
+      '    __pydevice_kwargs["flush"] = True',
+      '    try:',
+      '        return __pydevice_print(*args, **__pydevice_kwargs)',
+      '    except TypeError:',
+      '        try:',
+      '            return __pydevice_print(*args, **kwargs)',
+      '        except TypeError:',
+      '            return __pydevice_print(*args)',
+      '__pydevice_builtins.print = __pydevice_print_flush',
+      'try:',
+      '    __pydevice_sys.stdout = __pydevice_sys.stdout',
+      'except Exception:',
+      '    pass',
       `__pydevice_code = ${JSON.stringify(script)}`,
       `__pydevice_file = ${JSON.stringify(fileName)}`,
       "__pydevice_globals = {'__name__': '__main__', '__file__': __pydevice_file}",

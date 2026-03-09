@@ -21,4 +21,10 @@ export interface PythonDevice {
   getBoardRuntimeInfo(timeoutMs?: number): Promise<PyDeviceRuntimeInfo>;
   write(data: string, options?: { drain?: boolean }): Promise<void>;
   execRawCapture(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string }>;
+  execRawCaptureStreaming(
+    command: string,
+    timeoutMs?: number,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }>;
 }
