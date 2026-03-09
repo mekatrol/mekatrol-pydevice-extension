@@ -16,6 +16,7 @@ import { getDeviceHostFolderMappings, loadConfiguration } from '../utils/configu
 import { toRelativePath } from '../utils/device-filesystem';
 import { pyDeviceInternalTimeouts } from '../constants/timeout-constants';
 import { showErrorMessage, t } from '../utils/i18n';
+import { appendDeviceReplOutput } from '../views/repl-view';
 
 const debugType = 'pydevice';
 const deviceDocumentScheme = 'pydevice-device';
@@ -53,7 +54,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
   private readonly messageEmitter = new vscode.EventEmitter<vscode.DebugProtocolMessage>();
   readonly onDidSendMessage = this.messageEmitter.event;
   private sequence = 1;
-  private terminateRequested = false;
   private launchDeviceId: string | undefined;
 
   dispose(): void {
@@ -100,7 +100,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
       case 'terminate':
         this.sendResponse(request);
         if (request.command === 'disconnect' || request.command === 'terminate') {
-          this.terminateRequested = true;
           this.sendEvent('terminated');
         }
         return;
@@ -111,7 +110,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private async handleLaunch(args: Record<string, unknown>): Promise<void> {
     let exitCode = 0;
-    this.terminateRequested = false;
     this.launchDeviceId = undefined;
 
     try {
@@ -143,6 +141,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
       if (normalisedStdout.length > 0) {
         logChannelOutput(normalisedStdout, true);
+        appendDeviceReplOutput(targetDeviceId, normalisedStdout);
         this.sendEvent('output', {
           category: 'console',
           output: this.ensureTrailingNewline(normalisedStdout)
@@ -152,6 +151,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
       if (normalisedStderr.length > 0) {
         exitCode = 1;
         logChannelOutput(normalisedStderr, true);
+        appendDeviceReplOutput(targetDeviceId, normalisedStderr);
         this.sendEvent('output', {
           category: 'console',
           output: this.ensureTrailingNewline(normalisedStderr)
@@ -172,11 +172,11 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         endBoardExecution(this.launchDeviceId);
       }
 
-      if (this.terminateRequested && this.launchDeviceId) {
+      if (this.launchDeviceId) {
         await softRebootConnectedPyDevice(
           this.launchDeviceId,
-          `Device ${this.launchDeviceId} soft rebooted after debug session stop.`,
-          `Failed to soft reboot device ${this.launchDeviceId} after debug session stop`
+          `Device ${this.launchDeviceId} soft rebooted after debug session end.`,
+          `Failed to soft reboot device ${this.launchDeviceId} after debug session end`
         );
       }
 
