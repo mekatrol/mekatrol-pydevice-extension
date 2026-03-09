@@ -4,6 +4,10 @@
   "displayName": "Mekatrol PyDevice",
   "description": "A Python device developer extension.",
   "icon": "images/logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mekatrol/mekatrol-pydevice-extension.git"
+  },
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.98.0"
@@ -16,7 +20,7 @@
     "onFileSystem:pydevice-device"
   ],
   "l10n": "./l10n",
-  "main": "./dist/extension.js",
+  "main": "dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -694,6 +698,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
+    "vsce:package": "npx -y -p npm@10 -p @vscode/vsce vsce package",
+    "vsce:publish": "npx -y -p npm@10 -p @vscode/vsce vsce publish",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
@@ -714,15 +720,16 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.3.3",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.98.0",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "dependency-cruiser": "^17.3.1",
     "esbuild": "^0.27.3",
     "eslint": "^10.0.2",
     "mocha": "^11.7.5",
-    "dependency-cruiser": "^17.3.1",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3"
   },

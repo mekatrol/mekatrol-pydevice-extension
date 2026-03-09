@@ -7,9 +7,9 @@ To sign in (and refresh token) Browse to [Manage Publishers & Extensions](https:
 
 > Package 
 ```bash
-vsce package
+npm run vsce:package
 ```
 
 ```bash
-vsce publish
+npm run vsce:publish
 ```
