@@ -4,6 +4,7 @@
  */
 import * as vscode from 'vscode';
 import { SerialPort } from 'serialport';
+import { StringDecoder } from 'string_decoder';
 import { logChannelOutput } from '../../logging/output-channel';
 import { emitPyDeviceLoggerEvent } from '../../logging/pydevice-logger-events';
 import { pyDeviceInternalTimeouts, pyDeviceTimeoutSettings } from '../../constants/timeout-constants';
@@ -328,7 +329,31 @@ export class PyDeviceConnection {
     return this.enqueueExclusive(() => this.execRawCaptureUnlocked(command, effectiveTimeoutMs));
   }
 
+  async execRawCaptureStreaming(
+    command: string,
+    timeoutMs?: number,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }> {
+    const effectiveTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
+    return this.enqueueExclusive(() => this.execRawCaptureStreamingUnlocked(
+      command,
+      effectiveTimeoutMs,
+      onStdoutChunk,
+      onStderrChunk
+    ));
+  }
+
   private async execRawCaptureUnlocked(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
+    return this.execRawCaptureStreamingUnlocked(command, timeoutMs);
+  }
+
+  private async execRawCaptureStreamingUnlocked(
+    command: string,
+    timeoutMs?: number,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }> {
     const effectiveTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
     this.assertPortOpen();
 
@@ -337,34 +362,16 @@ export class PyDeviceConnection {
     await this.write(command);
     await this.write(pyDeviceControlChars.ctrlD);
 
-    const response = await this.waitForDataEndingWith(pyDeviceProtocolBuffers.rawCaptureResponseSuffix, effectiveTimeoutMs);
+    const { stdout, stderr } = await this.waitForRawCaptureResponseStreaming(
+      effectiveTimeoutMs,
+      onStdoutChunk,
+      onStderrChunk
+    );
 
     await this.write(pyDeviceCommandSequences.exitRawRepl, { drain: false });
     await this.readUntilIdle(100, 600);
 
-    let payload = response;
-    if (
-      payload.length >= pyDeviceProtocolText.rawCommandAcceptedPrefix.length
-      && payload[0] === pyDeviceProtocolText.rawCommandAcceptedPrefix.charCodeAt(0)
-      && payload[1] === pyDeviceProtocolText.rawCommandAcceptedPrefix.charCodeAt(1)
-    ) {
-      payload = payload.slice(2);
-    }
-
-    const firstEot = payload.indexOf(pyDeviceProtocolBytes.ctrlD);
-    if (firstEot < 0) {
-      return { stdout: Buffer.from(payload).toString('utf8'), stderr: '' };
-    }
-
-    const stdoutBytes = payload.slice(0, firstEot);
-    const remainder = payload.slice(firstEot + 1);
-    const secondEot = remainder.lastIndexOf(pyDeviceProtocolBytes.ctrlD);
-    const stderrBytes = secondEot >= 0 ? remainder.slice(0, secondEot) : remainder;
-
-    return {
-      stdout: Buffer.from(stdoutBytes).toString('utf8'),
-      stderr: Buffer.from(stderrBytes).toString('utf8')
-    };
+    return { stdout, stderr };
   }
 
   async getBoardRuntimeInfo(timeoutMs?: number): Promise<PyDeviceRuntimeInfo> {
@@ -714,30 +721,111 @@ export class PyDeviceConnection {
     });
   }
 
-  private async waitForDataEndingWith(suffix: Buffer, timeoutMs: number): Promise<number[]> {
+  private async waitForRawCaptureResponseStreaming(
+    timeoutMs: number,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }> {
     this.assertPortOpen();
 
-    const bytes: number[] = [];
-    return await new Promise<number[]>((resolve, reject) => {
+    const stdoutBytes: number[] = [];
+    const stderrBytes: number[] = [];
+    const stdoutDecoder = new StringDecoder('utf8');
+    const stderrDecoder = new StringDecoder('utf8');
+    type CapturePhase = 'stdout' | 'stderr';
+    let phase: CapturePhase = 'stdout';
+
+    const okPrefix = pyDeviceProtocolText.rawCommandAcceptedPrefix;
+    let okPrefixMatched = 0;
+    let okPrefixResolved = false;
+
+    const emitStdout = (bytes: number[]): void => {
+      if (bytes.length === 0) {
+        return;
+      }
+      stdoutBytes.push(...bytes);
+      if (onStdoutChunk) {
+        const text = stdoutDecoder.write(Buffer.from(bytes));
+        if (text.length > 0) {
+          onStdoutChunk(text);
+        }
+      }
+    };
+
+    const emitStderr = (bytes: number[]): void => {
+      if (bytes.length === 0) {
+        return;
+      }
+      stderrBytes.push(...bytes);
+      if (onStderrChunk) {
+        const text = stderrDecoder.write(Buffer.from(bytes));
+        if (text.length > 0) {
+          onStderrChunk(text);
+        }
+      }
+    };
+
+    return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const finish = () => {
+        const stdoutRemainder = onStdoutChunk ? stdoutDecoder.end() : '';
+        if (stdoutRemainder.length > 0 && onStdoutChunk) {
+          onStdoutChunk(stdoutRemainder);
+        }
+        const stderrRemainder = onStderrChunk ? stderrDecoder.end() : '';
+        if (stderrRemainder.length > 0 && onStderrChunk) {
+          onStderrChunk(stderrRemainder);
+        }
+        resolve({
+          stdout: Buffer.from(stdoutBytes).toString('utf8'),
+          stderr: Buffer.from(stderrBytes).toString('utf8')
+        });
+      };
+
       const onData = (chunk: Buffer) => {
         this.emitIO('rx', chunk);
+        const stdoutChunkBytes: number[] = [];
+        const stderrChunkBytes: number[] = [];
+
         for (const value of chunk.values()) {
-          bytes.push(value);
-        }
+          if (!okPrefixResolved) {
+            if (okPrefixMatched < okPrefix.length && value === okPrefix.charCodeAt(okPrefixMatched)) {
+              okPrefixMatched += 1;
+              if (okPrefixMatched === okPrefix.length) {
+                okPrefixResolved = true;
+              }
+              continue;
+            }
 
-        if (bytes.length < suffix.length) {
-          return;
-        }
+            okPrefixResolved = true;
+            if (okPrefixMatched > 0) {
+              for (let i = 0; i < okPrefixMatched; i += 1) {
+                stdoutChunkBytes.push(okPrefix.charCodeAt(i));
+              }
+              okPrefixMatched = 0;
+            }
+          }
 
-        const start = bytes.length - suffix.length;
-        for (let i = 0; i < suffix.length; i += 1) {
-          if (bytes[start + i] !== suffix[i]) {
+          if (phase === 'stdout') {
+            if (value === pyDeviceProtocolBytes.ctrlD) {
+              phase = 'stderr';
+              continue;
+            }
+            stdoutChunkBytes.push(value);
+            continue;
+          }
+
+          if (value === pyDeviceProtocolBytes.ctrlD) {
+            emitStdout(stdoutChunkBytes);
+            emitStderr(stderrChunkBytes);
+            cleanup();
+            finish();
             return;
           }
+          stderrChunkBytes.push(value);
         }
 
-        cleanup();
-        resolve(bytes.slice(0, -suffix.length));
+        emitStdout(stdoutChunkBytes);
+        emitStderr(stderrChunkBytes);
       };
 
       const onError = (error: Error) => {
@@ -747,12 +835,7 @@ export class PyDeviceConnection {
 
       const onTimeout = () => {
         cleanup();
-        reject(
-          this.reportError(
-            `Timed out waiting for serial response suffix ${JSON.stringify(Array.from(suffix.values()))}`,
-            new Error(`Timeout after ${timeoutMs}ms`)
-          )
-        );
+        reject(this.reportError('Timed out waiting for raw capture command completion', new Error(`Timeout after ${timeoutMs}ms`)));
       };
 
       const cleanup = () => {

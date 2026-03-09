@@ -16,6 +16,7 @@ import { getDeviceHostFolderMappings, loadConfiguration } from '../utils/configu
 import { toRelativePath } from '../utils/device-filesystem';
 import { pyDeviceInternalTimeouts } from '../constants/timeout-constants';
 import { showErrorMessage, t } from '../utils/i18n';
+import { appendDeviceReplOutput } from '../views/repl-view';
 
 const debugType = 'pydevice';
 const deviceDocumentScheme = 'pydevice-device';
@@ -53,7 +54,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
   private readonly messageEmitter = new vscode.EventEmitter<vscode.DebugProtocolMessage>();
   readonly onDidSendMessage = this.messageEmitter.event;
   private sequence = 1;
-  private terminateRequested = false;
   private launchDeviceId: string | undefined;
 
   dispose(): void {
@@ -100,7 +100,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
       case 'terminate':
         this.sendResponse(request);
         if (request.command === 'disconnect' || request.command === 'terminate') {
-          this.terminateRequested = true;
           this.sendEvent('terminated');
         }
         return;
@@ -111,7 +110,6 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private async handleLaunch(args: Record<string, unknown>): Promise<void> {
     let exitCode = 0;
-    this.terminateRequested = false;
     this.launchDeviceId = undefined;
 
     try {
@@ -137,25 +135,28 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         : pyDeviceInternalTimeouts.debugExecutionTimeoutMs;
 
       const command = this.buildExecutionCommand(script, this.displayPath(targetUri));
-      const { stdout, stderr } = await board.execRawCapture(command, timeoutMs);
-      const normalisedStdout = this.normaliseLineEndings(stdout);
-      const normalisedStderr = this.normaliseLineEndings(stderr);
+      const streamOutput = (chunk: string, category: 'console' | 'stderr') => {
+        const normalised = this.normaliseLineEndings(chunk);
+        if (normalised.length === 0) {
+          return;
+        }
+        appendDeviceReplOutput(targetDeviceId, normalised);
+        this.sendEvent('output', { category, output: normalised });
+        logChannelOutput(normalised, true);
+      };
 
-      if (normalisedStdout.length > 0) {
-        logChannelOutput(normalisedStdout, true);
-        this.sendEvent('output', {
-          category: 'console',
-          output: this.ensureTrailingNewline(normalisedStdout)
-        });
-      }
+      const { stderr } = await board.execRawCaptureStreaming(
+        command,
+        timeoutMs,
+        (chunk) => streamOutput(chunk, 'console'),
+        (chunk) => {
+          exitCode = 1;
+          streamOutput(chunk, 'stderr');
+        }
+      );
 
-      if (normalisedStderr.length > 0) {
+      if (stderr.trim().length > 0) {
         exitCode = 1;
-        logChannelOutput(normalisedStderr, true);
-        this.sendEvent('output', {
-          category: 'console',
-          output: this.ensureTrailingNewline(normalisedStderr)
-        });
       }
 
       logChannelOutput(`Run on device ${targetDeviceId} completed: ${this.displayPath(targetUri)}`, true);
@@ -172,11 +173,11 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         endBoardExecution(this.launchDeviceId);
       }
 
-      if (this.terminateRequested && this.launchDeviceId) {
+      if (this.launchDeviceId) {
         await softRebootConnectedPyDevice(
           this.launchDeviceId,
-          `Device ${this.launchDeviceId} soft rebooted after debug session stop.`,
-          `Failed to soft reboot device ${this.launchDeviceId} after debug session stop`
+          `Device ${this.launchDeviceId} soft rebooted after debug session end.`,
+          `Failed to soft reboot device ${this.launchDeviceId} after debug session end`
         );
       }
 
@@ -256,6 +257,11 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private async resolveTargetDeviceId(targetUri: vscode.Uri): Promise<string | undefined> {
     if (targetUri.scheme === deviceDocumentScheme) {
+      const queryDeviceId = new URLSearchParams(targetUri.query).get('deviceId')?.trim();
+      if (queryDeviceId) {
+        return queryDeviceId;
+      }
+
       const segments = toRelativePath(targetUri.path.replace(/^\/+/, '')).split('/').filter(Boolean);
       if (segments.length > 1) {
         try {
@@ -271,6 +277,8 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
     if (targetUri.scheme === 'file') {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (workspaceFolder) {
+        const connectedDevices = getConnectedPyDevices();
+        const connectedById = new Map(connectedDevices.map((item) => [item.deviceId, item]));
         const config = await loadConfiguration();
         const mappings = Object.entries(getDeviceHostFolderMappings(config))
           .map(([deviceId, folder]) => ({ deviceId, folder: toRelativePath(folder) }))
@@ -281,11 +289,16 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
             (item) => workspaceRelative === item.folder || workspaceRelative.startsWith(`${item.folder}/`)
           );
           if (mappedMatches.length === 1) {
-            return mappedMatches[0].deviceId;
+            const mappedDeviceId = mappedMatches[0].deviceId;
+            if (connectedById.has(mappedDeviceId)) {
+              return mappedDeviceId;
+            }
+            if (connectedDevices.length === 1) {
+              return connectedDevices[0].deviceId;
+            }
           }
 
           if (mappedMatches.length > 1) {
-            const connectedById = new Map(getConnectedPyDevices().map((item) => [item.deviceId, item]));
             const options = mappedMatches
               .map((item) => connectedById.get(item.deviceId))
               .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -326,6 +339,24 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
   private buildExecutionCommand(script: string, fileName: string): string {
     return [
+      'import builtins as __pydevice_builtins',
+      'import sys as __pydevice_sys',
+      '__pydevice_print = __pydevice_builtins.print',
+      'def __pydevice_print_flush(*args, **kwargs):',
+      '    __pydevice_kwargs = dict(kwargs)',
+      '    __pydevice_kwargs["flush"] = True',
+      '    try:',
+      '        return __pydevice_print(*args, **__pydevice_kwargs)',
+      '    except TypeError:',
+      '        try:',
+      '            return __pydevice_print(*args, **kwargs)',
+      '        except TypeError:',
+      '            return __pydevice_print(*args)',
+      '__pydevice_builtins.print = __pydevice_print_flush',
+      'try:',
+      '    __pydevice_sys.stdout = __pydevice_sys.stdout',
+      'except Exception:',
+      '    pass',
       `__pydevice_code = ${JSON.stringify(script)}`,
       `__pydevice_file = ${JSON.stringify(fileName)}`,
       "__pydevice_globals = {'__name__': '__main__', '__file__': __pydevice_file}",

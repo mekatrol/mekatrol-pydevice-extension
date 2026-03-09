@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/mekatrol/mekatrol-pydevice-extension.git"
   },
-  "version": "0.0.2",
+  "version": "0.0.3",
   "engines": {
     "vscode": "^1.98.0"
   },
@@ -592,8 +592,8 @@
         },
         "mekatrol.pydevice.mountHostInWorkspaceExplorer": {
           "type": "boolean",
-          "default": false,
-          "description": "Mount HOST sync folder as a workspace folder in the native Explorer. Disabled by default to avoid workspace-save prompts."
+          "default": true,
+          "description": "Mount HOST sync folder as a workspace folder in the native Explorer."
         },
         "mekatrol.pydevice.mountDeviceInWorkspaceExplorer": {
           "type": "boolean",

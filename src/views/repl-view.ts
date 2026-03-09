@@ -627,10 +627,34 @@ class ReplViewProvider implements vscode.WebviewViewProvider, vscode.Disposable 
       .replace('__REPL_INPUT_ARIA__', t('REPL command input'))
       .replace('__RUNNING__', t('Running...'));
   }
+
+  appendExternalOutput(deviceId: string, output: string): void {
+    if (!output || !deviceId) {
+      return;
+    }
+
+    if (!this.devicesById.has(deviceId)) {
+      this.reconcileConnectedDevices(getConnectedPyDevices());
+    }
+
+    if (!this.devicesById.has(deviceId)) {
+      return;
+    }
+
+    this.appendMultiline(deviceId, output);
+    this.postState();
+  }
 }
+
+let replViewProviderInstance: ReplViewProvider | undefined;
+
+export const appendDeviceReplOutput = (deviceId: string, output: string): void => {
+  replViewProviderInstance?.appendExternalOutput(deviceId, output);
+};
 
 export const initReplView = (context: vscode.ExtensionContext): void => {
   const provider = new ReplViewProvider(context);
+  replViewProviderInstance = provider;
 
   context.subscriptions.push(
     provider,
@@ -645,6 +669,12 @@ export const initReplView = (context: vscode.ExtensionContext): void => {
       provider.clearActiveHistory();
     })
   );
+
+  context.subscriptions.push(new vscode.Disposable(() => {
+    if (replViewProviderInstance === provider) {
+      replViewProviderInstance = undefined;
+    }
+  }));
 
   provider.reveal();
 };
