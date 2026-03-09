@@ -1806,7 +1806,64 @@ export const initConnectionStateMonitor = (context: vscode.ExtensionContext): vo
   });
 };
 
-export const tryReconnectBoardOnStartup = async (_context: vscode.ExtensionContext): Promise<void> => {
+interface StartupReconnectStatusView {
+  updateRow: (row: ConnectRow) => Promise<void>;
+  close: () => void;
+}
+
+const createStartupReconnectStatusView = (
+  context: vscode.ExtensionContext,
+  rows: ConnectRow[]
+): StartupReconnectStatusView => {
+  let disposed = false;
+  const panel = vscode.window.createWebviewPanel(
+    'pydevice.startupReconnectStatus',
+    'PyDevice: Auto reconnect',
+    { viewColumn: vscode.ViewColumn.Active, preserveFocus: true },
+    {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'dist', 'webviews')
+      ]
+    }
+  );
+
+  panel.webview.html = renderConnectHtml(
+    panel.webview,
+    context.extensionUri,
+    rows,
+    pyDeviceInternalTimeouts.recoveryConnectAttemptTimeoutMs
+  );
+
+  panel.webview.onDidReceiveMessage((message: unknown) => {
+    if (!message || typeof message !== 'object') {
+      return;
+    }
+    const typed = message as { type?: string };
+    if (typed.type === 'close') {
+      panel.dispose();
+    }
+  });
+  panel.onDidDispose(() => {
+    disposed = true;
+  });
+
+  return {
+    updateRow: async (row: ConnectRow): Promise<void> => {
+      if (!disposed) {
+        await panel.webview.postMessage({ type: 'updateRow', row });
+      }
+    },
+    close: (): void => {
+      if (disposed) {
+        return;
+      }
+      panel.dispose();
+    }
+  };
+};
+
+export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContext): Promise<void> => {
   const autoReconnectEnabled = getWorkspaceCacheValue<boolean>(autoReconnectDevicesCacheKey) ?? false;
 
   if (!autoReconnectEnabled || isBoardConnected()) {
@@ -1820,16 +1877,73 @@ export const tryReconnectBoardOnStartup = async (_context: vscode.ExtensionConte
     return;
   }
 
-  for (const devicePath of reconnectDevicePaths) {
-    if (getConnectedPyDeviceByPortPath(devicePath)) {
-      continue;
-    }
+  const startupRows: ConnectRow[] = reconnectDevicePaths.map((devicePath) => ({
+    id: `startup:${devicePath}`,
+    devicePath,
+    serialPortName: path.basename(devicePath),
+    deviceId: toDeviceId(devicePath),
+    deviceName: '',
+    section: 'unconnected',
+    status: ConnectStatus.Ready
+  }));
 
-    try {
-      await connectBoardForPath(devicePath, baudRate, false);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      logChannelOutput(`Auto reconnect skipped for ${devicePath}: ${reason}`, false);
+  const rowByPath = new Map(startupRows.map((row) => [row.devicePath, row]));
+  const statusView = createStartupReconnectStatusView(context, startupRows);
+  let hadFailures = false;
+
+  const updateStartupRow = async (
+    devicePath: string,
+    update: Partial<ConnectRow>
+  ): Promise<void> => {
+    const existing = rowByPath.get(devicePath);
+    if (!existing) {
+      return;
+    }
+    const next: ConnectRow = {
+      ...existing,
+      ...update
+    };
+    rowByPath.set(devicePath, next);
+    await statusView.updateRow(next);
+  };
+
+  try {
+    for (const devicePath of reconnectDevicePaths) {
+      if (getConnectedPyDeviceByPortPath(devicePath)) {
+        await updateStartupRow(devicePath, {
+          status: ConnectStatus.Connected,
+          errorText: undefined
+        });
+        continue;
+      }
+
+      await updateStartupRow(devicePath, {
+        status: ConnectStatus.Connecting,
+        errorText: undefined
+      });
+
+      try {
+        const connected = await connectBoardForPath(devicePath, baudRate, false);
+        await updateStartupRow(devicePath, {
+          status: ConnectStatus.Connected,
+          deviceId: connected?.deviceId ?? toDeviceId(devicePath),
+          deviceInfo: toDeviceInfoSummary(connected?.runtimeInfo),
+          errorText: undefined,
+          section: 'device'
+        });
+      } catch (error) {
+        hadFailures = true;
+        const reason = error instanceof Error ? error.message : String(error);
+        await updateStartupRow(devicePath, {
+          status: ConnectStatus.Error,
+          errorText: reason
+        });
+        logChannelOutput(`Auto reconnect skipped for ${devicePath}: ${reason}`, false);
+      }
+    }
+  } finally {
+    if (!hadFailures) {
+      setTimeout(() => statusView.close(), 1200);
     }
   }
 };
