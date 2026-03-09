@@ -84,13 +84,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
     disposePyDeviceLogger();
   };
 
-  try {
-    await initialisePyDeviceController();
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    logChannelOutput(`PyDeviceController startup failed: ${reason}`, true);
-  }
-
   const fileWatcher = new FileWatcher({
     excludedPaths: ['.vscode', '.pydevice']
   });
@@ -137,6 +130,9 @@ export const activate = async (context: vscode.ExtensionContext) => {
   await runInit('initConnectionStateMonitor', () => initConnectionStateMonitor(context));
   await runInit('initReplView', () => initReplView(context));
   await runInit('tryReconnectBoardOnStartup', () => tryReconnectBoardOnStartup(context));
+  await runInit('initialisePyDeviceController', async () => {
+    await initialisePyDeviceController();
+  });
 
   await runInit('initExtensionStatusView', () => initExtensionStatusView(context));
 

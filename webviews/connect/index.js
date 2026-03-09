@@ -317,3 +317,5 @@
       }
       vscode.postMessage({ type: 'close' });
     });
+
+    vscode.postMessage({ type: 'ready' });

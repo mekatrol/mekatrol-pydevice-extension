@@ -1807,6 +1807,7 @@ export const initConnectionStateMonitor = (context: vscode.ExtensionContext): vo
 };
 
 interface StartupReconnectStatusView {
+  ready: Promise<void>;
   updateRow: (row: ConnectRow) => Promise<void>;
   close: () => void;
 }
@@ -1816,6 +1817,19 @@ const createStartupReconnectStatusView = (
   rows: ConnectRow[]
 ): StartupReconnectStatusView => {
   let disposed = false;
+  let readyResolver: (() => void) | undefined;
+  let readyResolved = false;
+  const ready = new Promise<void>((resolve) => {
+    readyResolver = resolve;
+  });
+  const resolveReady = (): void => {
+    if (readyResolved) {
+      return;
+    }
+    readyResolved = true;
+    readyResolver?.();
+    readyResolver = undefined;
+  };
   const panel = vscode.window.createWebviewPanel(
     'pydevice.startupReconnectStatus',
     'PyDevice: Auto reconnect',
@@ -1840,15 +1854,22 @@ const createStartupReconnectStatusView = (
       return;
     }
     const typed = message as { type?: string };
+    if (typed.type === 'ready') {
+      resolveReady();
+      return;
+    }
     if (typed.type === 'close') {
       panel.dispose();
     }
   });
   panel.onDidDispose(() => {
     disposed = true;
+    resolveReady();
   });
+  setTimeout(resolveReady, 1500);
 
   return {
+    ready,
     updateRow: async (row: ConnectRow): Promise<void> => {
       if (!disposed) {
         await panel.webview.postMessage({ type: 'updateRow', row });
@@ -1890,6 +1911,8 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
   const rowByPath = new Map(startupRows.map((row) => [row.devicePath, row]));
   const statusView = createStartupReconnectStatusView(context, startupRows);
   let hadFailures = false;
+
+  await statusView.ready;
 
   const updateStartupRow = async (
     devicePath: string,
