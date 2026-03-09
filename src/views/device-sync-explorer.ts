@@ -155,6 +155,17 @@ interface DeviceFileSyncRow {
   scopeIcon: 'library' | 'folder';
 }
 
+interface DragDropNodeRef {
+  side: NodeSide;
+  relativePath: string;
+  isDirectory: boolean;
+  deviceId?: string;
+  isRoot?: boolean;
+  isIndicator?: boolean;
+  isDeviceIdNode?: boolean;
+  isLibraryNode?: boolean;
+}
+
 class SyncNode extends vscode.TreeItem {
   public readonly data: NodeData;
 
@@ -3173,6 +3184,523 @@ class DeviceSyncModel {
     logChannelOutput(msg, true);
   }
 
+  async moveNodesByDragDrop(sourceNodes: SyncNode[], targetNode?: SyncNode): Promise<void> {
+    const target = targetNode ?? this.selectedNode;
+    if (!target || target.data.isIndicator) {
+      showWarningMessage('Drop onto a device or computer folder.');
+      return;
+    }
+
+    const sourceRefs = sourceNodes.map((node): DragDropNodeRef => ({
+      side: node.data.side,
+      relativePath: toRelativePath(node.data.relativePath),
+      isDirectory: node.data.isDirectory,
+      deviceId: node.data.deviceId,
+      isRoot: !!node.data.isRoot,
+      isIndicator: !!node.data.isIndicator,
+      isDeviceIdNode: !!node.data.isDeviceIdNode,
+      isLibraryNode: !!node.data.isLibraryNode
+    }));
+    if (sourceRefs.length === 0) {
+      return;
+    }
+
+    const movedLabels: string[] = [];
+    const skippedLabels: string[] = [];
+    for (const source of sourceRefs) {
+      if (source.isRoot || source.isIndicator || source.isDeviceIdNode || source.isLibraryNode || !source.relativePath) {
+        skippedLabels.push(source.relativePath || '(root)');
+        continue;
+      }
+
+      try {
+        const destination = await this.resolveDropDestination(target, source);
+        if (!destination) {
+          skippedLabels.push(source.relativePath);
+          continue;
+        }
+        const sourceBaseName = path.posix.basename(source.relativePath);
+        const destinationRelativePath = destination.relativeDirectoryPath
+          ? toRelativePath(path.posix.join(destination.relativeDirectoryPath, sourceBaseName))
+          : sourceBaseName;
+        if (!destinationRelativePath) {
+          skippedLabels.push(source.relativePath);
+          continue;
+        }
+
+        if (
+          source.side === destination.side
+          && source.deviceId === destination.deviceId
+          && source.relativePath === destinationRelativePath
+        ) {
+          skippedLabels.push(source.relativePath);
+          continue;
+        }
+
+        if (
+          source.isDirectory
+          && source.side === destination.side
+          && source.deviceId === destination.deviceId
+          && destinationRelativePath.startsWith(`${source.relativePath}/`)
+        ) {
+          skippedLabels.push(source.relativePath);
+          continue;
+        }
+
+        await this.moveSinglePath(source, destination, destinationRelativePath);
+        movedLabels.push(source.relativePath);
+      } catch (error) {
+        const message = this.toErrorMessage(error);
+        logChannelOutput(`Drag/drop move failed for "${source.relativePath}": ${message}`, true);
+        showWarningMessage(`Failed to move "${source.relativePath}": ${message}`);
+      }
+    }
+
+    await this.refresh(true, false);
+
+    if (movedLabels.length > 0) {
+      const movedSummary = movedLabels.length === 1 ? movedLabels[0] : `${movedLabels.length} items`;
+      showInformationMessage(`Moved ${movedSummary}.`);
+    } else if (skippedLabels.length > 0) {
+      showWarningMessage('No items were moved.');
+    }
+  }
+
+  private async resolveDropDestination(targetNode: SyncNode): Promise<{
+    side: NodeSide;
+    deviceId?: string;
+    relativeDirectoryPath: string;
+    computerRootPath?: string;
+  } | undefined>;
+  private async resolveDropDestination(
+    targetNode: SyncNode,
+    source: DragDropNodeRef
+  ): Promise<{
+    side: NodeSide;
+    deviceId?: string;
+    relativeDirectoryPath: string;
+    computerRootPath?: string;
+  } | undefined>;
+  private async resolveDropDestination(
+    targetNode: SyncNode,
+    source?: DragDropNodeRef
+  ): Promise<{
+    side: NodeSide;
+    deviceId?: string;
+    relativeDirectoryPath: string;
+    computerRootPath?: string;
+  } | undefined> {
+    if (targetNode.data.side === 'computer') {
+      if (targetNode.data.isRoot) {
+        const computerRootPath = await this.resolveComputerRootForDrop(source);
+        if (!computerRootPath) {
+          showWarningMessage('Cannot resolve COMPUTER root target. Map a host folder for this device first.');
+          return undefined;
+        }
+        return {
+          side: 'computer',
+          deviceId: source?.deviceId ?? this.activeDeviceId,
+          relativeDirectoryPath: '',
+          computerRootPath
+        };
+      }
+      const computerRootPath = this.resolveComputerReadRootPath(targetNode);
+      if (!computerRootPath) {
+        showWarningMessage('No computer folder is available for this drop target.');
+        return undefined;
+      }
+      if (targetNode.data.isDeviceIdNode) {
+        return {
+          side: 'computer',
+          deviceId: targetNode.data.deviceId,
+          relativeDirectoryPath: '',
+          computerRootPath
+        };
+      }
+      const relativeDirectoryPath = targetNode.data.isDirectory
+        ? toRelativePath(targetNode.data.relativePath)
+        : toRelativePath(path.posix.dirname(targetNode.data.relativePath) === '.'
+          ? ''
+          : path.posix.dirname(targetNode.data.relativePath));
+      return {
+        side: 'computer',
+        deviceId: targetNode.data.deviceId,
+        relativeDirectoryPath,
+        computerRootPath
+      };
+    }
+
+    const deviceId = targetNode.data.deviceId ?? this.activeDeviceId;
+    if (!deviceId) {
+      showWarningMessage('Drop onto a specific device.');
+      return undefined;
+    }
+    const board = getConnectedPyDevice(deviceId);
+    if (!board) {
+      showWarningMessage(`Connect ${this.getDeviceDisplayName(deviceId)} before dropping files.`);
+      return undefined;
+    }
+    const relativeDirectoryPath = targetNode.data.isDeviceIdNode
+      ? ''
+      : targetNode.data.isDirectory
+        ? toRelativePath(targetNode.data.relativePath)
+        : toRelativePath(path.posix.dirname(targetNode.data.relativePath) === '.'
+          ? ''
+          : path.posix.dirname(targetNode.data.relativePath));
+    return {
+      side: 'device',
+      deviceId,
+      relativeDirectoryPath
+    };
+  }
+
+  private async resolveComputerRootForDrop(source?: DragDropNodeRef): Promise<string | undefined> {
+    if (source?.deviceId) {
+      const mapped = this.syncRootByDeviceId.get(source.deviceId);
+      if (mapped) {
+        return mapped;
+      }
+    }
+
+    if (this.activeDeviceId) {
+      const activeMapped = this.syncRootByDeviceId.get(this.activeDeviceId);
+      if (activeMapped) {
+        return activeMapped;
+      }
+    }
+
+    const uniqueRoots = [...new Set(
+      [...this.syncRootByDeviceId.values()]
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    )];
+    if (uniqueRoots.length === 1) {
+      return uniqueRoots[0];
+    }
+
+    const mappedCandidates = Object.entries(this.deviceHostFolderMappings)
+      .map(([deviceId, hostFolder]) => {
+        const hostRelativePath = toRelativePath(hostFolder);
+        if (!hostRelativePath) {
+          return undefined;
+        }
+        const hostAbsolutePath = this.resolveWorkspaceRelativePath(hostRelativePath);
+        if (!hostAbsolutePath) {
+          return undefined;
+        }
+        return {
+          deviceId,
+          hostRelativePath,
+          hostAbsolutePath
+        };
+      })
+      .filter((item): item is { deviceId: string; hostRelativePath: string; hostAbsolutePath: string } => !!item)
+      .sort((a, b) => a.hostRelativePath.localeCompare(b.hostRelativePath));
+
+    if (mappedCandidates.length === 0) {
+      return undefined;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      mappedCandidates.map((candidate) => ({
+        label: candidate.hostRelativePath,
+        description: this.getDeviceDisplayNameWithId(candidate.deviceId),
+        hostAbsolutePath: candidate.hostAbsolutePath
+      })),
+      {
+        title: t('Select Computer Destination'),
+        placeHolder: t('Drop target is COMPUTER root. Choose destination host folder.'),
+        canPickMany: false,
+        ignoreFocusOut: true
+      }
+    );
+
+    return picked?.hostAbsolutePath;
+  }
+
+  private async moveSinglePath(
+    source: DragDropNodeRef,
+    destination: {
+      side: NodeSide;
+      deviceId?: string;
+      relativeDirectoryPath: string;
+      computerRootPath?: string;
+    },
+    destinationRelativePath: string
+  ): Promise<void> {
+    if (source.side === 'computer' && destination.side === 'computer') {
+      await this.moveComputerToComputer(source, destination, destinationRelativePath);
+      return;
+    }
+
+    if (source.side === 'computer' && destination.side === 'device') {
+      await this.moveComputerToDevice(source, destination, destinationRelativePath);
+      return;
+    }
+
+    if (source.side === 'device' && destination.side === 'computer') {
+      await this.moveDeviceToComputer(source, destination, destinationRelativePath);
+      return;
+    }
+
+    await this.moveDeviceToDevice(source, destination, destinationRelativePath);
+  }
+
+  private async moveComputerToComputer(
+    source: DragDropNodeRef,
+    destination: { computerRootPath?: string; relativeDirectoryPath: string; deviceId?: string },
+    destinationRelativePath: string
+  ): Promise<void> {
+    const sourceNode = new SyncNode(
+      { side: 'computer', relativePath: source.relativePath, isDirectory: source.isDirectory, deviceId: source.deviceId },
+      source.relativePath,
+      vscode.TreeItemCollapsibleState.None
+    );
+    const sourceRoot = this.resolveComputerReadRootPath(sourceNode);
+    const destinationRoot = destination.computerRootPath;
+    if (!sourceRoot || !destinationRoot) {
+      throw new Error('Missing computer source/destination root.');
+    }
+
+    const sourceAbsolutePath = path.join(sourceRoot, source.relativePath);
+    const destinationAbsolutePath = path.join(destinationRoot, destinationRelativePath);
+    if (await this.pathExists(destinationAbsolutePath)) {
+      throw new Error(`Target already exists: /${destinationRelativePath}`);
+    }
+
+    if (sourceRoot === destinationRoot) {
+      await fs.rename(sourceAbsolutePath, destinationAbsolutePath);
+      return;
+    }
+
+    await this.copyComputerPath(sourceAbsolutePath, destinationAbsolutePath, source.isDirectory);
+    await fs.rm(sourceAbsolutePath, { recursive: true, force: true });
+  }
+
+  private async moveComputerToDevice(
+    source: DragDropNodeRef,
+    destination: { deviceId?: string; relativeDirectoryPath: string },
+    destinationRelativePath: string
+  ): Promise<void> {
+    const sourceNode = new SyncNode(
+      { side: 'computer', relativePath: source.relativePath, isDirectory: source.isDirectory, deviceId: source.deviceId },
+      source.relativePath,
+      vscode.TreeItemCollapsibleState.None
+    );
+    const sourceRoot = this.resolveComputerReadRootPath(sourceNode);
+    const destinationDeviceId = destination.deviceId;
+    if (!sourceRoot || !destinationDeviceId) {
+      throw new Error('Missing source host root or destination device.');
+    }
+    const board = getConnectedPyDevice(destinationDeviceId);
+    if (!board) {
+      throw new Error(`Destination device is not connected: ${destinationDeviceId}`);
+    }
+
+    const destinationEntries = await listDeviceEntries(board);
+    if (destinationEntries.some((entry) => toRelativePath(entry.relativePath) === destinationRelativePath)) {
+      throw new Error(`Target already exists on device: /${destinationRelativePath}`);
+    }
+
+    const sourceAbsolutePath = path.join(sourceRoot, source.relativePath);
+    await this.copyComputerPathToDevice(board, sourceAbsolutePath, destinationRelativePath, source.isDirectory);
+    await fs.rm(sourceAbsolutePath, { recursive: true, force: true });
+  }
+
+  private async moveDeviceToComputer(
+    source: DragDropNodeRef,
+    destination: { computerRootPath?: string; relativeDirectoryPath: string },
+    destinationRelativePath: string
+  ): Promise<void> {
+    const sourceDeviceId = source.deviceId;
+    const destinationRoot = destination.computerRootPath;
+    if (!sourceDeviceId || !destinationRoot) {
+      throw new Error('Missing source device or destination computer path.');
+    }
+    const sourceBoard = getConnectedPyDevice(sourceDeviceId);
+    if (!sourceBoard) {
+      throw new Error(`Source device is not connected: ${sourceDeviceId}`);
+    }
+
+    const destinationAbsolutePath = path.join(destinationRoot, destinationRelativePath);
+    if (await this.pathExists(destinationAbsolutePath)) {
+      throw new Error(`Target already exists on computer: /${destinationRelativePath}`);
+    }
+
+    await this.copyDevicePathToComputer(sourceBoard, source.relativePath, destinationAbsolutePath, source.isDirectory);
+    await deleteDevicePath(sourceBoard, source.relativePath);
+    await this.removeSyncExclusionsForDeletedDevicePath(sourceDeviceId, source.relativePath, source.isDirectory);
+    if (this.notifyDevicePathDeleted) {
+      await this.notifyDevicePathDeleted(source.relativePath, source.isDirectory);
+    }
+  }
+
+  private async moveDeviceToDevice(
+    source: DragDropNodeRef,
+    destination: { deviceId?: string; relativeDirectoryPath: string },
+    destinationRelativePath: string
+  ): Promise<void> {
+    const sourceDeviceId = source.deviceId;
+    const destinationDeviceId = destination.deviceId;
+    if (!sourceDeviceId || !destinationDeviceId) {
+      throw new Error('Missing source or destination device.');
+    }
+    const sourceBoard = getConnectedPyDevice(sourceDeviceId);
+    const destinationBoard = getConnectedPyDevice(destinationDeviceId);
+    if (!sourceBoard || !destinationBoard) {
+      throw new Error('Connect both devices before moving files between devices.');
+    }
+
+    if (sourceDeviceId === destinationDeviceId) {
+      await renameDevicePath(sourceBoard, source.relativePath, destinationRelativePath);
+      if (this.notifyDevicePathDeleted) {
+        await this.notifyDevicePathDeleted(source.relativePath, source.isDirectory);
+      }
+      if (!source.isDirectory && this.notifyDeviceFilesChanged) {
+        await this.notifyDeviceFilesChanged([destinationRelativePath]);
+      }
+      return;
+    }
+
+    const destinationEntries = await listDeviceEntries(destinationBoard);
+    if (destinationEntries.some((entry) => toRelativePath(entry.relativePath) === destinationRelativePath)) {
+      throw new Error(`Target already exists on device: /${destinationRelativePath}`);
+    }
+
+    await this.copyDevicePathToDevice(
+      sourceBoard,
+      destinationBoard,
+      source.relativePath,
+      destinationRelativePath,
+      source.isDirectory
+    );
+    await deleteDevicePath(sourceBoard, source.relativePath);
+    await this.removeSyncExclusionsForDeletedDevicePath(sourceDeviceId, source.relativePath, source.isDirectory);
+    if (this.notifyDevicePathDeleted) {
+      await this.notifyDevicePathDeleted(source.relativePath, source.isDirectory);
+    }
+    if (!source.isDirectory && this.notifyDeviceFilesChanged) {
+      await this.notifyDeviceFilesChanged([destinationRelativePath]);
+    }
+  }
+
+  private async pathExists(targetPath: string): Promise<boolean> {
+    try {
+      await fs.stat(targetPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async copyComputerPath(sourceAbsolutePath: string, destinationAbsolutePath: string, isDirectory: boolean): Promise<void> {
+    if (isDirectory) {
+      await fs.cp(sourceAbsolutePath, destinationAbsolutePath, { recursive: true, force: false, errorOnExist: true });
+      return;
+    }
+    await fs.mkdir(path.dirname(destinationAbsolutePath), { recursive: true });
+    await fs.copyFile(sourceAbsolutePath, destinationAbsolutePath);
+  }
+
+  private async copyComputerPathToDevice(
+    destinationBoard: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
+    sourceAbsolutePath: string,
+    destinationRelativePath: string,
+    isDirectory: boolean
+  ): Promise<void> {
+    if (isDirectory) {
+      await createDeviceDirectory(destinationBoard, destinationRelativePath);
+      const children = await fs.readdir(sourceAbsolutePath, { withFileTypes: true });
+      for (const child of children) {
+        const childSourceAbsolutePath = path.join(sourceAbsolutePath, child.name);
+        const childDestinationRelativePath = toRelativePath(path.posix.join(destinationRelativePath, child.name));
+        if (child.isDirectory()) {
+          await this.copyComputerPathToDevice(destinationBoard, childSourceAbsolutePath, childDestinationRelativePath, true);
+          continue;
+        }
+        if (!child.isFile()) {
+          continue;
+        }
+        const content = await fs.readFile(childSourceAbsolutePath);
+        await writeDeviceFile(destinationBoard, childDestinationRelativePath, Buffer.from(content));
+      }
+      return;
+    }
+
+    const content = await fs.readFile(sourceAbsolutePath);
+    await writeDeviceFile(destinationBoard, destinationRelativePath, Buffer.from(content));
+  }
+
+  private async copyDevicePathToComputer(
+    sourceBoard: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
+    sourceRelativePath: string,
+    destinationAbsolutePath: string,
+    isDirectory: boolean
+  ): Promise<void> {
+    const sourcePath = toRelativePath(sourceRelativePath);
+    const entries = await listDeviceEntries(sourceBoard);
+    if (isDirectory) {
+      const scopedEntries = entries
+        .filter((entry) => {
+          const relative = toRelativePath(entry.relativePath);
+          return relative === sourcePath || relative.startsWith(`${sourcePath}/`);
+        })
+        .sort((a, b) => a.relativePath.length - b.relativePath.length);
+      for (const entry of scopedEntries) {
+        const relative = toRelativePath(entry.relativePath);
+        const suffix = relative === sourcePath ? '' : relative.slice(sourcePath.length + 1);
+        const outputPath = suffix ? path.join(destinationAbsolutePath, suffix) : destinationAbsolutePath;
+        if (entry.isDirectory) {
+          await fs.mkdir(outputPath, { recursive: true });
+          continue;
+        }
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        const content = await readDeviceFile(sourceBoard, relative);
+        await fs.writeFile(outputPath, content);
+      }
+      return;
+    }
+
+    await fs.mkdir(path.dirname(destinationAbsolutePath), { recursive: true });
+    const content = await readDeviceFile(sourceBoard, sourcePath);
+    await fs.writeFile(destinationAbsolutePath, content);
+  }
+
+  private async copyDevicePathToDevice(
+    sourceBoard: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
+    destinationBoard: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
+    sourceRelativePath: string,
+    destinationRelativePath: string,
+    isDirectory: boolean
+  ): Promise<void> {
+    const sourcePath = toRelativePath(sourceRelativePath);
+    const destinationPath = toRelativePath(destinationRelativePath);
+    if (isDirectory) {
+      const entries = await listDeviceEntries(sourceBoard);
+      const scopedEntries = entries
+        .filter((entry) => {
+          const relative = toRelativePath(entry.relativePath);
+          return relative === sourcePath || relative.startsWith(`${sourcePath}/`);
+        })
+        .sort((a, b) => a.relativePath.length - b.relativePath.length);
+      for (const entry of scopedEntries) {
+        const relative = toRelativePath(entry.relativePath);
+        const suffix = relative === sourcePath ? '' : relative.slice(sourcePath.length + 1);
+        const targetPath = suffix ? toRelativePath(path.posix.join(destinationPath, suffix)) : destinationPath;
+        if (entry.isDirectory) {
+          await createDeviceDirectory(destinationBoard, targetPath);
+          continue;
+        }
+        const content = await readDeviceFile(sourceBoard, relative);
+        await writeDeviceFile(destinationBoard, targetPath, content);
+      }
+      return;
+    }
+
+    const content = await readDeviceFile(sourceBoard, sourcePath);
+    await writeDeviceFile(destinationBoard, destinationPath, content);
+  }
+
   getNodeChildren(
     side: NodeSide,
     parentRelativePath: string,
@@ -6055,6 +6583,84 @@ class SyncTreeProvider implements vscode.TreeDataProvider<SyncNode>, vscode.Disp
   }
 }
 
+class SyncTreeDragAndDropController implements vscode.TreeDragAndDropController<SyncNode>, vscode.Disposable {
+  readonly dropMimeTypes = ['application/vnd.mekatrol.pydevice.syncnodes'];
+  readonly dragMimeTypes = ['application/vnd.mekatrol.pydevice.syncnodes'];
+
+  constructor(private readonly model: DeviceSyncModel) {}
+
+  dispose(): void {}
+
+  async handleDrag(
+    source: readonly SyncNode[],
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    const payload = source.map((node) => ({
+      side: node.data.side,
+      relativePath: toRelativePath(node.data.relativePath),
+      isDirectory: node.data.isDirectory,
+      deviceId: node.data.deviceId,
+      isRoot: !!node.data.isRoot,
+      isIndicator: !!node.data.isIndicator,
+      isDeviceIdNode: !!node.data.isDeviceIdNode,
+      isLibraryNode: !!node.data.isLibraryNode
+    }));
+    dataTransfer.set('application/vnd.mekatrol.pydevice.syncnodes', new vscode.DataTransferItem(JSON.stringify(payload)));
+  }
+
+  async handleDrop(
+    target: SyncNode | undefined,
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    const item = dataTransfer.get('application/vnd.mekatrol.pydevice.syncnodes');
+    if (!item) {
+      return;
+    }
+    const payloadJson = await item.asString();
+    let payload: DragDropNodeRef[] = [];
+    try {
+      const parsed = JSON.parse(payloadJson) as unknown;
+      if (Array.isArray(parsed)) {
+        payload = parsed
+          .filter((entry): entry is DragDropNodeRef => !!entry && typeof entry === 'object')
+          .map((entry) => ({
+            side: entry.side === 'computer' ? 'computer' : 'device',
+            relativePath: toRelativePath(String(entry.relativePath ?? '')),
+            isDirectory: !!entry.isDirectory,
+            deviceId: typeof entry.deviceId === 'string' ? entry.deviceId : undefined,
+            isRoot: !!entry.isRoot,
+            isIndicator: !!entry.isIndicator,
+            isDeviceIdNode: !!entry.isDeviceIdNode,
+            isLibraryNode: !!entry.isLibraryNode
+          }));
+      }
+    } catch {
+      payload = [];
+    }
+    if (payload.length === 0) {
+      return;
+    }
+
+    const sourceNodes = payload.map((entry) => new SyncNode(
+      {
+        side: entry.side,
+        relativePath: entry.relativePath,
+        isDirectory: entry.isDirectory,
+        deviceId: entry.deviceId,
+        isRoot: entry.isRoot,
+        isIndicator: entry.isIndicator,
+        isDeviceIdNode: entry.isDeviceIdNode,
+        isLibraryNode: entry.isLibraryNode
+      },
+      path.posix.basename(entry.relativePath) || entry.relativePath || '/',
+      entry.isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+    ));
+    await this.model.moveNodesByDragDrop(sourceNodes, target);
+  }
+}
+
 const hostWorkspaceFolderName = 'COMPUTER';
 const deviceWorkspaceFolderName = 'DEVICE';
 const mountHostWorkspaceFolderSettingKey = 'mountHostInWorkspaceExplorer';
@@ -6237,7 +6843,12 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   const provider = new SyncTreeProvider(model);
 
   context.subscriptions.push(provider);
-  const treeView = vscode.window.createTreeView(syncViewId, { treeDataProvider: provider });
+  const dragAndDropController = new SyncTreeDragAndDropController(model);
+  context.subscriptions.push(dragAndDropController);
+  const treeView = vscode.window.createTreeView(syncViewId, {
+    treeDataProvider: provider,
+    dragAndDropController
+  });
   context.subscriptions.push(treeView);
   context.subscriptions.push(vscode.workspace.registerFileSystemProvider(deviceDocumentScheme, deviceFsProvider, { isCaseSensitive: true }));
   if (fileWatcher) {
