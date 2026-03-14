@@ -6661,53 +6661,6 @@ class SyncTreeDragAndDropController implements vscode.TreeDragAndDropController<
   }
 }
 
-const hostWorkspaceFolderName = 'COMPUTER';
-const deviceWorkspaceFolderName = 'DEVICE';
-const mountHostWorkspaceFolderSettingKey = 'mountHostInWorkspaceExplorer';
-const mountDeviceWorkspaceFolderSettingKey = 'mountDeviceInWorkspaceExplorer';
-
-const ensureNativeExplorerRoots = async (model: DeviceSyncModel): Promise<void> => {
-  const syncRootPath = model.getSyncRootPath();
-  const deviceUri = vscode.Uri.parse(`${deviceDocumentScheme}:/`);
-  const configuration = vscode.workspace.getConfiguration('mekatrol.pydevice');
-  const mountHostWorkspaceFolder = configuration.get<boolean>(mountHostWorkspaceFolderSettingKey, true);
-  const mountDeviceWorkspaceFolder = configuration.get<boolean>(mountDeviceWorkspaceFolderSettingKey, false);
-  const existing = vscode.workspace.workspaceFolders ?? [];
-  const hostUri = syncRootPath ? vscode.Uri.file(syncRootPath) : undefined;
-  const existingHostIndex = hostUri
-    ? existing.findIndex((folder) => folder.uri.toString() === hostUri.toString())
-    : -1;
-  const existingDeviceIndex = existing.findIndex((folder) => folder.uri.toString() === deviceUri.toString());
-
-  if ((!mountHostWorkspaceFolder || !hostUri) && existingHostIndex >= 0) {
-    vscode.workspace.updateWorkspaceFolders(existingHostIndex, 1);
-  }
-
-  if (!mountDeviceWorkspaceFolder && existingDeviceIndex >= 0) {
-    vscode.workspace.updateWorkspaceFolders(existingDeviceIndex, 1);
-  }
-
-  const currentFolders = vscode.workspace.workspaceFolders ?? [];
-  const hostExists = hostUri
-    ? currentFolders.some((folder) => folder.uri.toString() === hostUri.toString())
-    : false;
-  const deviceExists = currentFolders.some((folder) => folder.uri.toString() === deviceUri.toString());
-
-  const additions: { uri: vscode.Uri; name: string }[] = [];
-  if (mountHostWorkspaceFolder && hostUri && !hostExists) {
-    additions.push({ uri: hostUri, name: hostWorkspaceFolderName });
-  }
-  if (mountDeviceWorkspaceFolder && !deviceExists) {
-    additions.push({ uri: deviceUri, name: deviceWorkspaceFolderName });
-  }
-
-  if (additions.length === 0) {
-    return;
-  }
-
-  vscode.workspace.updateWorkspaceFolders(currentFolders.length, 0, ...additions);
-};
-
 export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, fileWatcher?: FileWatcher): Promise<void> => {
   const deviceFsProvider = new DeviceDeviceFileSystemProvider(context);
   let lastConnectedDeviceIds = getConnectedPyDevices().map((item) => item.deviceId).sort((a, b) => a.localeCompare(b));
@@ -6889,7 +6842,6 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     const hasNewConnection = nextConnectedDeviceIds.some((deviceId) => !previousConnectedIds.has(deviceId));
     deviceFsProvider.notifyConnectedDeviceRootsChanged(lastConnectedDeviceIds, nextConnectedDeviceIds);
     lastConnectedDeviceIds = nextConnectedDeviceIds;
-    void ensureNativeExplorerRoots(model);
     void model.refresh(hasNewConnection, false);
   }));
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => model.handleDocumentSaved(document)));
@@ -6991,5 +6943,4 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   }));
   await model.refresh(true, true);
   void vscode.commands.executeCommand(`${syncViewId}.focus`);
-  await ensureNativeExplorerRoots(model);
 };

@@ -578,16 +578,6 @@
           "minimum": 0,
           "description": "How long to wait for board connection before opening/saving device files fails. Set to 0 to wait indefinitely."
         },
-        "mekatrol.pydevice.mountHostInWorkspaceExplorer": {
-          "type": "boolean",
-          "default": true,
-          "description": "Mount HOST sync folder as a workspace folder in the native Explorer."
-        },
-        "mekatrol.pydevice.mountDeviceInWorkspaceExplorer": {
-          "type": "boolean",
-          "default": false,
-          "description": "Mount DEVICE as a workspace folder in the native Explorer. Enable only if your tooling supports non-file workspace schemes."
-        },
         "mekatrol.pydevice.replHistoryLimit": {
           "type": "number",
           "default": 100,

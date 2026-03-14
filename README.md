@@ -173,8 +173,6 @@ This extension contributes these main settings:
 
 - `mekatrol.pydevice.verboseReplTransportLogs`: Enable low-level REPL transport logging.
 - `mekatrol.pydevice.deviceFileOpenWaitForConnectionMs`: Wait time before device file open/save fails.
-- `mekatrol.pydevice.mountHostInWorkspaceExplorer`: Mount host sync in native VS Code Explorer.
-- `mekatrol.pydevice.mountDeviceInWorkspaceExplorer`: Mount device filesystem in native Explorer.
 - `mekatrol.pydevice.replHistoryLimit`: Per-device REPL history length.
 
 ## Known Issues
