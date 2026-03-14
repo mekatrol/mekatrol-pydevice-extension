@@ -108,6 +108,12 @@ const isTransientPortLockError = (error: unknown): boolean => {
     || message.includes('device or resource busy');
 };
 
+const isMissingSerialPortError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLocaleLowerCase() : String(error).toLocaleLowerCase();
+  return (message.includes('failed to open serial port') || message.includes('cannot open'))
+    && (message.includes('no such file or directory') || message.includes('file not found'));
+};
+
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
   return await new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -1898,7 +1904,28 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
     return;
   }
 
-  const startupRows: ConnectRow[] = reconnectDevicePaths.map((devicePath) => ({
+  let availablePorts: Awaited<ReturnType<typeof listSerialDevices>> | undefined;
+  try {
+    availablePorts = await listSerialDevices();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    logChannelOutput(`Auto reconnect could not list serial ports before reconnecting: ${reason}`, false);
+  }
+
+  const availablePortPaths = availablePorts ? new Set(availablePorts.map((port) => port.path)) : undefined;
+  const startupReconnectPaths = availablePortPaths
+    ? reconnectDevicePaths.filter((devicePath) => availablePortPaths.has(devicePath))
+    : reconnectDevicePaths;
+
+  if (startupReconnectPaths.length !== reconnectDevicePaths.length) {
+    await reconnectStateStore.writeReconnectDevicePaths(startupReconnectPaths);
+  }
+
+  if (startupReconnectPaths.length === 0) {
+    return;
+  }
+
+  const startupRows: ConnectRow[] = startupReconnectPaths.map((devicePath) => ({
     id: `startup:${devicePath}`,
     devicePath,
     serialPortName: path.basename(devicePath),
@@ -1931,7 +1958,7 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
   };
 
   try {
-    for (const devicePath of reconnectDevicePaths) {
+    for (const devicePath of startupReconnectPaths) {
       if (getConnectedPyDeviceByPortPath(devicePath)) {
         await updateStartupRow(devicePath, {
           status: ConnectStatus.Connected,
@@ -1955,6 +1982,12 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
           section: 'device'
         });
       } catch (error) {
+        if (isMissingSerialPortError(error)) {
+          await reconnectStateStore.removeReconnectDevicePath(devicePath);
+          rowByPath.delete(devicePath);
+          continue;
+        }
+        await reconnectStateStore.removeReconnectDevicePath(devicePath);
         hadFailures = true;
         const reason = error instanceof Error ? error.message : String(error);
         await updateStartupRow(devicePath, {
