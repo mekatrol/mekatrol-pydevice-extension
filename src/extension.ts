@@ -21,7 +21,6 @@ import {
 import { initDeviceSyncExplorer } from './views/device-sync-explorer';
 import { initPyDeviceDebug } from './debug/py-device-debug';
 import { initReplView } from './views/repl-view';
-import { initExtensionStatusView } from './views/extension-status-view';
 import { getWorkspaceCacheValue, initialiseWorkspaceCache, loggerAutoStartCacheKey, setWorkspaceCacheValue } from './utils/workspace-cache';
 import { initialisePyDeviceController, stopPyDeviceController } from './devices/controller/py-device-controller-singleton';
 import { FileWatcher } from './utils/file-watcher';
@@ -134,8 +133,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
     await initialisePyDeviceController();
   });
 
-  await runInit('initExtensionStatusView', () => initExtensionStatusView(context));
-
   // Init device sync explorer
   await runInit('initDeviceSyncExplorer', () => initDeviceSyncExplorer(context, fileWatcher));
 
@@ -143,7 +140,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
   await runInit('initPyDeviceDebug', () => initPyDeviceDebug(context));
 
   logStartup('Activation completed.');
-
 };
 
 // This method is called when your extension is deactivated

@@ -210,10 +210,6 @@
         "title": "Focus on PyDevice Explorer View"
       },
       {
-        "command": "mekatrol.pydevice.statusView.focus",
-        "title": "Focus on PyDevice View"
-      },
-      {
         "command": "mekatrol.pydevice.replView.focus",
         "title": "Focus on PyDevice REPL View"
       }
@@ -239,10 +235,6 @@
         {
           "id": "mekatrol.pydevice.syncExplorer",
           "name": "PyDevice Explorer"
-        },
-        {
-          "id": "mekatrol.pydevice.statusView",
-          "name": "PYDEVICE"
         }
       ],
       "mekatrol-pydevice-panel": [
@@ -401,10 +393,6 @@
         },
         {
           "command": "mekatrol.pydevice.syncExplorer.focus",
-          "when": "false"
-        },
-        {
-          "command": "mekatrol.pydevice.statusView.focus",
           "when": "false"
         },
         {
