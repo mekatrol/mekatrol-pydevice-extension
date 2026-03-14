@@ -4,7 +4,7 @@
  * and starts a connection for the selected detected device.
  */
 import * as vscode from 'vscode';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import { listAllSerialPorts } from '../utils/serial-port';
 import { getConnectedPyDeviceByPortPath } from './connect-board-command';
 import { ProbedSerialDevice, SerialDeviceProber } from '../devices/discovery/serial-device-prober';
@@ -64,14 +64,14 @@ export const initAutoDetectDevicesCommand = (context: vscode.ExtensionContext): 
       const reason = error instanceof Error ? error.message : String(error);
       const msg = `Auto detect failed. ${reason}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
     if (detectedDevices.length === 0) {
       const msg = 'No accessible serial devices detected (connected ports are skipped).';
       showWarningMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 

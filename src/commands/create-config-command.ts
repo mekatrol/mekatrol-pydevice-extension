@@ -5,7 +5,7 @@
  */
 import * as vscode from 'vscode';
 import { configurationFileName, getConfigurationFullFileName, PyDeviceConfigurationResult, resetDefaultConfiguration } from '../utils/configuration';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import { showErrorMessage, showInformationMessage, showWarningMessage, t } from '../utils/i18n';
 
 export const initCreateConfigCommand = (context: vscode.ExtensionContext) => {
@@ -27,7 +27,7 @@ export const initCreateConfigCommand = (context: vscode.ExtensionContext) => {
         {
           const msg = `PyDevice configuration file already exists: '${fileNameOrError}'.`;
           showWarningMessage(msg);
-          logChannelOutput(msg, true);
+          outputChannelLogger.log(msg, true);
         }
         break;
 
@@ -35,7 +35,7 @@ export const initCreateConfigCommand = (context: vscode.ExtensionContext) => {
         {
           const msg = `PyDevice configuration file reset: '${fileNameOrError}'.`;
           showInformationMessage(msg);
-          logChannelOutput(msg, true);
+          outputChannelLogger.log(msg, true);
         }
         break;
 
@@ -43,7 +43,7 @@ export const initCreateConfigCommand = (context: vscode.ExtensionContext) => {
         {
           const msg = 'Open a workspace to reset the PyDevice configuration file.';
           showInformationMessage(msg);
-          logChannelOutput(msg, true);
+          outputChannelLogger.log(msg, true);
         }
         break;
 
@@ -51,7 +51,7 @@ export const initCreateConfigCommand = (context: vscode.ExtensionContext) => {
         {
           const msg = `Error resetting PyDevice configuration file: ${fileNameOrError}.`;
           showErrorMessage(msg);
-          logChannelOutput(msg, true);
+          outputChannelLogger.log(msg, true);
         }
         break;
     }

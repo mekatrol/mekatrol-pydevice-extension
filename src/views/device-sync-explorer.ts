@@ -9,7 +9,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { closeAllConnectedPyDevices, getConnectedPyDevice, getConnectedPyDevices, onBoardConnectionStateChanged, onBoardConnectionsChanged } from '../commands/connect-board-command';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import {
   createDefaultConfiguration,
   PyDeviceConfigurationResult,
@@ -266,7 +266,7 @@ class DeviceSyncModel {
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logChannelOutput(`Waiting for device path "/${targetPath}" failed: ${message}`, false);
+        outputChannelLogger.log(`Waiting for device path "/${targetPath}" failed: ${message}`, false);
       }
 
       await this.wait(deviceCreateConfirmPollIntervalMs);
@@ -304,7 +304,7 @@ class DeviceSyncModel {
         const message = 'Open a workspace folder to show devices in PyDevice Explorer.';
         this.hasWarnedNoWorkspaceFolder = true;
         showWarningMessage(message);
-        logChannelOutput(message, true);
+        outputChannelLogger.log(message, true);
       }
       this.computerEntries = [{ relativePath: '', isDirectory: true }];
       this.deviceEntries = [{ relativePath: '', isDirectory: true }];
@@ -324,7 +324,7 @@ class DeviceSyncModel {
         const message = `Create "${configurationFileName}" to enable PyDevice Explorer.`;
         this.hasWarnedMissingConfiguration = true;
         showWarningMessage(message);
-        logChannelOutput(message, true);
+        outputChannelLogger.log(message, true);
       }
       this.computerEntries = [{ relativePath: '', isDirectory: true }];
       this.deviceEntries = [{ relativePath: '', isDirectory: true }];
@@ -387,7 +387,7 @@ class DeviceSyncModel {
             deviceEntries = await listDeviceEntries(board);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            logChannelOutput(`Unable to read device filesystem (${deviceId}): ${message}`, true);
+            outputChannelLogger.log(`Unable to read device filesystem (${deviceId}): ${message}`, true);
           }
         }
       } else {
@@ -415,7 +415,7 @@ class DeviceSyncModel {
     this.onDidChangeDataEmitter.fire();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logChannelOutput(`Sync refresh failed: ${message}`, true);
+      outputChannelLogger.log(`Sync refresh failed: ${message}`, true);
       if (this.lastRefreshError !== message) {
         this.lastRefreshError = message;
         showErrorMessage(`PyDevice Explorer refresh failed: ${message}`);
@@ -787,7 +787,7 @@ class DeviceSyncModel {
         : 'Sync from device complete.';
       await syncDialog.finish(msg);
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       this.logSyncEvent('sync-from-device-completed', msg, {
         deviceId: this.activeDeviceId,
         totalOperations: syncOperations.length,
@@ -1114,7 +1114,7 @@ class DeviceSyncModel {
       : 'Sync from device complete.';
     await syncDialog.finish(msg);
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     this.logSyncEvent('sync-from-device-node-completed', msg, {
       deviceId,
       totalOperations: syncOperations.length,
@@ -1452,7 +1452,7 @@ class DeviceSyncModel {
       : 'Sync to device complete.';
     await syncDialog.finish(msg);
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     this.logSyncEvent('sync-to-device-completed', msg, {
       deviceId: this.activeDeviceId,
       totalOperations: syncOperations.length,
@@ -2115,7 +2115,7 @@ class DeviceSyncModel {
     if (!confirmed) {
       const warning = `Timed out waiting for created device file: /${relativePath}`;
       showWarningMessage(warning);
-      logChannelOutput(warning, true);
+      outputChannelLogger.log(warning, true);
       return;
     }
     if (this.notifyDeviceFilesChanged) {
@@ -2135,7 +2135,7 @@ class DeviceSyncModel {
 
     const msg = `Created device file: /${relativePath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   async createDeviceFolder(node?: SyncNode): Promise<void> {
@@ -2168,13 +2168,13 @@ class DeviceSyncModel {
     if (!confirmed) {
       const warning = `Timed out waiting for created device folder: /${relativePath}`;
       showWarningMessage(warning);
-      logChannelOutput(warning, true);
+      outputChannelLogger.log(warning, true);
       return;
     }
 
     const msg = `Created device folder: /${relativePath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   async renameDevicePath(node?: SyncNode): Promise<void> {
@@ -2219,7 +2219,7 @@ class DeviceSyncModel {
 
     const msg = `Renamed device path: /${currentPath} -> /${nextPath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   async deleteDevicePath(node?: SyncNode): Promise<void> {
@@ -2253,7 +2253,7 @@ class DeviceSyncModel {
         await this.refresh(true, false);
         const msg = `Device path already missing: /${targetPath}`;
         showInformationMessage(msg);
-        logChannelOutput(msg, true);
+        outputChannelLogger.log(msg, true);
         return;
       }
       throw error;
@@ -2268,7 +2268,7 @@ class DeviceSyncModel {
 
     const msg = `Deleted device path: /${targetPath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private resolveTargetNode(node?: SyncNode): SyncNode | undefined {
@@ -2697,7 +2697,7 @@ class DeviceSyncModel {
 
     const msg = `Excluded from sync for ${this.getDeviceDisplayNameWithId(deviceId)}: /${relativePath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   async removeDeviceFileFromSyncExclusion(node?: SyncNode): Promise<void> {
@@ -2731,7 +2731,7 @@ class DeviceSyncModel {
 
     const msg = `Removed sync exclusion for ${this.getDeviceDisplayNameWithId(deviceId)}: /${exclusionPath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private async pullFromDevicePath(
@@ -2840,7 +2840,7 @@ class DeviceSyncModel {
     const targetLabel = scopedTarget ? `/${scopedTarget}` : '/';
     const msg = `Sync from device complete for ${targetLabel}.`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private async pushToDevicePath(
@@ -2964,7 +2964,7 @@ class DeviceSyncModel {
     const targetLabel = scopedTarget ? `/${scopedTarget}` : '/';
     const msg = `Sync to device complete for ${targetLabel}.`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private getComputerParentPath(node?: SyncNode): string {
@@ -3095,7 +3095,7 @@ class DeviceSyncModel {
 
     const msg = `Created file on computer: /${relativePath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private async createComputerFolder(node?: SyncNode): Promise<void> {
@@ -3125,7 +3125,7 @@ class DeviceSyncModel {
 
     const msg = `Created folder on computer: /${relativePath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private async renameComputerPath(node: SyncNode): Promise<void> {
@@ -3156,7 +3156,7 @@ class DeviceSyncModel {
 
     const msg = `Renamed computer path: /${currentPath} -> /${nextPath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   private async deleteComputerPath(node: SyncNode): Promise<void> {
@@ -3181,7 +3181,7 @@ class DeviceSyncModel {
 
     const msg = `Deleted computer path: /${targetPath}`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   }
 
   async moveNodesByDragDrop(sourceNodes: SyncNode[], targetNode?: SyncNode): Promise<void> {
@@ -3251,7 +3251,7 @@ class DeviceSyncModel {
         movedLabels.push(source.relativePath);
       } catch (error) {
         const message = this.toErrorMessage(error);
-        logChannelOutput(`Drag/drop move failed for "${source.relativePath}": ${message}`, true);
+        outputChannelLogger.log(`Drag/drop move failed for "${source.relativePath}": ${message}`, true);
         showWarningMessage(`Failed to move "${source.relativePath}": ${message}`);
       }
     }
@@ -3981,7 +3981,7 @@ class DeviceSyncModel {
       .join('; ');
     const message = `Duplicate device names found in configuration: ${details}. Names must be unique.`;
     showErrorMessage(message);
-    logChannelOutput(message, true);
+    outputChannelLogger.log(message, true);
   }
 
   private computeNameSyncKey(): string {
@@ -4089,7 +4089,7 @@ class DeviceSyncModel {
         oldUriKeysToClose.add(entry.oldUri.toString());
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logChannelOutput(`Unable to retitle device tab ${entry.oldUri.toString()}: ${message}`, true);
+        outputChannelLogger.log(`Unable to retitle device tab ${entry.oldUri.toString()}: ${message}`, true);
       }
     }
 
@@ -4193,7 +4193,7 @@ class DeviceSyncModel {
         oldUriKeysToClose.add(entry.oldUri.toString());
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logChannelOutput(`Unable to normalize device tab ${entry.oldUri.toString()}: ${message}`, true);
+        outputChannelLogger.log(`Unable to normalize device tab ${entry.oldUri.toString()}: ${message}`, true);
       }
     }
 
@@ -4260,7 +4260,7 @@ class DeviceSyncModel {
       const reason = error instanceof Error ? error.message : String(error);
       const msg = `Failed to create computer folder "${normalised}". ${reason}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -4268,7 +4268,7 @@ class DeviceSyncModel {
     this.deviceHostFolderMappings = getDeviceHostFolderMappings(updated);
 
     const msg = `Mapped ${deviceId} to computer folder: ${normalised}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     showInformationMessage(msg);
     await this.refresh(true, false);
   }
@@ -4348,7 +4348,7 @@ class DeviceSyncModel {
     this.deviceHostFolderMappings = getDeviceHostFolderMappings(updated);
 
     const msg = `Unmapped ${deviceId} from computer folder: ${current}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     showInformationMessage(msg);
     await this.refresh(true, false);
   }
@@ -4394,7 +4394,7 @@ class DeviceSyncModel {
 
     const deviceLibraryName = path.posix.basename(normalisedRelativePath);
     const msg = `Added library for ${deviceId}: ${normalisedRelativePath} -> /${deviceLibraryName}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     showInformationMessage(msg);
     await this.refresh(true, false);
   }
@@ -4460,7 +4460,7 @@ class DeviceSyncModel {
     this.deviceLibraryFolderMappings = getDeviceLibraryFolderMappings(updated);
 
     const msg = `Removed library for ${deviceId}: ${libraryToRemove}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     showInformationMessage(msg);
     await this.refresh(true, false);
   }
@@ -4538,7 +4538,7 @@ class DeviceSyncModel {
     const msg = name.length > 0
       ? `Set name for ${deviceId}: ${name}`
       : `Cleared name for ${deviceId}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     showInformationMessage(msg);
     await this.refresh(true, false);
   }
@@ -5480,7 +5480,7 @@ class DeviceSyncModel {
       ? `Sync ${directionLabel} finished with ${failedCount} error(s).`
       : `Sync ${directionLabel} complete.`;
     showInformationMessage(summary);
-    logChannelOutput(summary, true);
+    outputChannelLogger.log(summary, true);
   }
 
   private renderSyncPreviewHtml(
@@ -5683,7 +5683,7 @@ class DeviceDeviceFileSystemProvider implements vscode.FileSystemProvider {
       const message = error instanceof Error ? error.message : String(error);
       const friendlyMessage = `device no longer available for the file. File: ${fallbackFilePath}. ${this.getDeviceDetails()}`;
       showWarningMessage(friendlyMessage);
-      logChannelOutput(`Device file not opened. ${friendlyMessage}`, true);
+      outputChannelLogger.log(`Device file not opened. ${friendlyMessage}`, true);
       await this.closeDeviceTabsForUriWithRetry(uri);
       throw vscode.FileSystemError.Unavailable(`${friendlyMessage} (${message})`);
     }
@@ -5707,13 +5707,13 @@ class DeviceDeviceFileSystemProvider implements vscode.FileSystemProvider {
         if (!this.shouldSuppressMissingPathWarning(relativePath)) {
           const friendlyMessage = `the file no longer exists on the device. File: ${relativePath}. ${this.getDeviceDetails(board)}`;
           showWarningMessage(friendlyMessage);
-          logChannelOutput(`Device file not opened. ${friendlyMessage}`, true);
+          outputChannelLogger.log(`Device file not opened. ${friendlyMessage}`, true);
           await this.closeDeviceTabsForUriWithRetry(uri);
         }
         throw vscode.FileSystemError.FileNotFound(uri);
       }
       const readFailureMessage = `failed to open device file. File: ${relativePath}. ${this.getDeviceDetails(board)}. ${message}`;
-      logChannelOutput(`Device file not opened. ${readFailureMessage}`, true);
+      outputChannelLogger.log(`Device file not opened. ${readFailureMessage}`, true);
       await this.closeDeviceTabsForUriWithRetry(uri);
       throw vscode.FileSystemError.Unavailable(`Failed to read device file: ${relativePath}. ${message}`);
     }
@@ -5747,7 +5747,7 @@ class DeviceDeviceFileSystemProvider implements vscode.FileSystemProvider {
         mtime: Date.now(),
         size: content.length
       });
-      logChannelOutput(`Saved to device: ${relativePath}`, true);
+      outputChannelLogger.log(`Saved to device: ${relativePath}`, true);
       this.onDidChangeFileEmitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -6832,7 +6832,7 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     ].filter((item): item is string => !!item).join(' | ');
     const message = summary.length > 0 ? `PyDevice workspace initialized. ${summary}` : 'PyDevice workspace initialized.';
     showInformationMessage(message);
-    logChannelOutput(message, true);
+    outputChannelLogger.log(message, true);
     await model.refresh(true, true);
   };
 

@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import { SerialPort } from 'serialport';
 import { StringDecoder } from 'string_decoder';
-import { logChannelOutput } from '../../logging/output-channel';
+import { outputChannelLogger } from '../../logging/output-channel';
 import { emitPyDeviceLoggerEvent } from '../../logging/pydevice-logger-events';
 import { pyDeviceInternalTimeouts, pyDeviceTimeoutSettings } from '../../constants/timeout-constants';
 import { getTimeoutSettingMs, resolveTimeoutMs } from '../../utils/timeout-settings';
@@ -179,7 +179,7 @@ export class PyDeviceConnection {
 
     const data = await this.readAllRaw();
     const str = String.fromCharCode(...data.filter((b) => b !== pyDeviceProtocolBytes.ctrlD));
-    logChannelOutput(str, false);
+    outputChannelLogger.log(str, false);
 
     return true;
   }
@@ -211,7 +211,7 @@ export class PyDeviceConnection {
     await this.delay(this.waitDelay);
 
     const response2 = await this.readAllRaw();
-    logChannelOutput(`Raw REPL fallback response: ${response2.join(',')}`, false);
+    outputChannelLogger.log(`Raw REPL fallback response: ${response2.join(',')}`, false);
 
     return true;
   }
@@ -908,7 +908,7 @@ export class PyDeviceConnection {
     if (this.reportErrorsToUser && this.shouldSurfaceErrorToUser(message)) {
       showErrorMessage(message);
     }
-    logChannelOutput(message, true);
+    outputChannelLogger.log(message, true);
     return new Error(message);
   }
 
@@ -932,7 +932,7 @@ export class PyDeviceConnection {
     }
     console.debug(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`);
     if (this.isTransportLoggingEnabled()) {
-      logChannelOutput(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`, false);
+      outputChannelLogger.log(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`, false);
     }
   }
 

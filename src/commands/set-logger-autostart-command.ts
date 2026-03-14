@@ -3,7 +3,7 @@
  * Command for toggling whether the PyDevice Logger auto-starts on extension activation.
  */
 import * as vscode from 'vscode';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import { getWorkspaceCacheValue, loggerAutoStartCacheKey, setWorkspaceCacheValue } from '../utils/workspace-cache';
 import { showInformationMessage, t } from '../utils/i18n';
 
@@ -42,7 +42,7 @@ export const initSetLoggerAutoStartCommand = (
 
     const msg = `PyDevice Logger auto-start is now ${enabled ? 'enabled' : 'disabled'}.`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   });
 
   context.subscriptions.push(command);

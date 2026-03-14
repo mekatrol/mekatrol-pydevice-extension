@@ -5,17 +5,29 @@
  */
 import * as vscode from 'vscode';
 
-let outputChannel: vscode.OutputChannel;
 const autoRevealOutputChannelOnLog = false;
 
-export const initOutputChannel = () => {
-  // Create output channel for logging
-  outputChannel = vscode.window.createOutputChannel('Mekatrol PyDevice');
-};
+export class OutputChannelLogger {
+  private outputChannel: vscode.OutputChannel | undefined;
 
-export const logChannelOutput = (content: string, show = true): void => {
-  outputChannel.appendLine(content);
-  if (show && autoRevealOutputChannelOnLog) {
-    outputChannel.show(true);
+  public init(): void {
+    if (this.outputChannel) {
+      return;
+    }
+
+    this.outputChannel = vscode.window.createOutputChannel('Mekatrol PyDevice');
   }
-};
+
+  public log(content: string, show = true): void {
+    if (!this.outputChannel) {
+      this.init();
+    }
+
+    this.outputChannel!.appendLine(content);
+    if (show && autoRevealOutputChannelOnLog) {
+      this.outputChannel!.show(true);
+    }
+  }
+}
+
+export const outputChannelLogger = new OutputChannelLogger();

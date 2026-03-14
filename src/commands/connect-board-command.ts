@@ -5,7 +5,7 @@
  */
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import { MicroPythonDevice, PyDeviceConnection, PyDeviceRuntimeInfo } from '../devices/py-device';
 import { listSerialDevices } from '../utils/serial-port';
 import { autoReconnectDevicesCacheKey, getWorkspaceCacheValue, setWorkspaceCacheValue } from '../utils/workspace-cache';
@@ -89,7 +89,7 @@ const getDistinctConfiguredDeviceNames = (namesByDeviceId: Record<string, string
       .map((item) => `"${item.name}" kept for ${item.existingDeviceId}, ignored for ${item.ignoredDeviceId}`)
       .join('; ');
     const message = `Duplicate device names detected in .pydevice/config.json. ${summary}`;
-    logChannelOutput(message, true);
+    outputChannelLogger.log(message, true);
     void showWarningMessage(message);
   }
 
@@ -157,7 +157,7 @@ const readBoardRuntimeInfoWithRetries = async (
 
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
   const message = `Connected, but failed to read board runtime info for ${devicePath} after ${attempts} attempt(s): ${reason}`;
-  logChannelOutput(message, true);
+  outputChannelLogger.log(message, true);
   void showWarningMessage(message);
   return undefined;
 };
@@ -196,7 +196,7 @@ const readBoardRuntimeInfoWithRecovery = async (
 
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
   const message = `Recovery connect: failed to read board runtime info for ${devicePath} after ${runtimeInfoRecoveryProbeAttempts + runtimeInfoRecoveryRebootAttempts} attempt(s): ${reason}`;
-  logChannelOutput(message, true);
+  outputChannelLogger.log(message, true);
   void showWarningMessage(message);
   return undefined;
 };
@@ -250,7 +250,7 @@ const saveDirtyDeviceDocumentsBeforeDisconnect = async (deviceId?: string): Prom
   );
 
   if (action !== 'Save & Disconnect') {
-    logChannelOutput('Disconnect cancelled by user: unsaved device files were not saved.', true);
+    outputChannelLogger.log('Disconnect cancelled by user: unsaved device files were not saved.', true);
     return false;
   }
 
@@ -259,7 +259,7 @@ const saveDirtyDeviceDocumentsBeforeDisconnect = async (deviceId?: string): Prom
     if (!saved || document.isDirty) {
       const msg = `Could not save device file before disconnect: ${document.uri.path}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return false;
     }
   }
@@ -301,7 +301,7 @@ const closeOpenDeviceTabsAfterDisconnect = async (deviceId?: string): Promise<vo
 
   const closed = await vscode.window.tabGroups.close(deviceTabs, true);
   if (!closed) {
-    logChannelOutput('Disconnected, but some device tabs could not be closed.', true);
+    outputChannelLogger.log('Disconnected, but some device tabs could not be closed.', true);
   }
 };
 
@@ -314,7 +314,7 @@ const pruneStaleConnectedDevices = async (
       activePorts = await listSerialDevices();
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      logChannelOutput(`Skipping stale connection pruning: unable to list serial devices. ${reason}`, false);
+      outputChannelLogger.log(`Skipping stale connection pruning: unable to list serial devices. ${reason}`, false);
       return;
     }
   }
@@ -333,7 +333,7 @@ const pruneStaleConnectedDevices = async (
     void removed.board.close().catch(() => {
       // Ignore close failures for already-disconnected/unplugged devices.
     });
-    logChannelOutput(
+    outputChannelLogger.log(
       `Dropped stale connection state for ${snapshot.deviceId} on ${snapshot.devicePath} after serial port disappeared.`,
       false
     );
@@ -404,7 +404,7 @@ const connectBoardForPath = async (
     if (showMessages) {
       const msg = `Device already connected: ${existingForPath.deviceId} on ${devicePath}.`;
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     }
     return existingForPath;
   }
@@ -449,12 +449,12 @@ const connectBoardForPath = async (
     if (promotedDeviceId !== state.deviceId) {
       const previousDeviceId = state.deviceId;
       if (boardRegistry.hasDeviceId(promotedDeviceId)) {
-        logChannelOutput(
+        outputChannelLogger.log(
           `Runtime info discovered new device ID ${promotedDeviceId} for ${state.board.device}, but it is already connected.`,
           true
         );
       } else if (boardRegistry.reassignDeviceId(previousDeviceId, promotedDeviceId)) {
-        logChannelOutput(`Promoted device ID for ${state.board.device}: ${previousDeviceId} -> ${promotedDeviceId}.`, false);
+        outputChannelLogger.log(`Promoted device ID for ${state.board.device}: ${previousDeviceId} -> ${promotedDeviceId}.`, false);
       }
     }
     notifyStateChanged();
@@ -476,7 +476,7 @@ const connectBoardForPath = async (
         try {
           const refreshedRuntimeInfo = await state.board.getDeviceInfo();
           await applyRefreshedRuntimeInfo(refreshedRuntimeInfo);
-          logChannelOutput(`Runtime info refreshed for ${state.deviceId} on attempt ${attempt}.`, false);
+          outputChannelLogger.log(`Runtime info refreshed for ${state.deviceId} on attempt ${attempt}.`, false);
           return;
         } catch (error) {
           lastError = error;
@@ -486,7 +486,7 @@ const connectBoardForPath = async (
       if (needsRuntimeInfoRefresh) {
         const reason = lastError instanceof Error ? lastError.message : String(lastError);
         const message = `Runtime info remained unavailable for ${state.deviceId} after ${runtimeInfoBackgroundRetryAttempts} background attempt(s): ${reason}`;
-        logChannelOutput(message, true);
+        outputChannelLogger.log(message, true);
         void showWarningMessage(message);
       }
     })();
@@ -507,7 +507,7 @@ export const closeConnectedPyDeviceByDeviceId = async (
     if (showSuccessMessage) {
       const msg = `No active board connection found for ${deviceId}.`;
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     }
     return true;
   }
@@ -539,9 +539,9 @@ export const closeConnectedPyDeviceByDeviceId = async (
 
     if (showSuccessMessage) {
       const msg = `Board connection closed for ${deviceId}.`;
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     } else {
-      logChannelOutput(`Board connection closed for ${deviceId} during extension shutdown.`, false);
+      outputChannelLogger.log(`Board connection closed for ${deviceId} during extension shutdown.`, false);
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -560,11 +560,11 @@ export const closeConnectedPyDeviceByDeviceId = async (
       if (closeDeviceTabsAfterDisconnect) {
         await closeOpenDeviceTabsAfterDisconnect(deviceId);
       }
-      logChannelOutput(`Board connection for ${deviceId} was already closed. Cleared stale state.`, true);
+      outputChannelLogger.log(`Board connection for ${deviceId} was already closed. Cleared stale state.`, true);
       return true;
     }
     const msg = `Failed to close board connection for ${deviceId}. ${reason}`;
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     return false;
   }
 
@@ -582,7 +582,7 @@ export const closeConnectedPyDevice = async (
     if (showSuccessMessage) {
       const msg = 'No active board connection to close.';
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     }
     return true;
   }
@@ -665,7 +665,7 @@ const pickSerialPortToConnect = async (
   if (candidatePorts.length === 0) {
     const msg = 'No additional serial devices available to connect.';
     showWarningMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
     return undefined;
   }
 
@@ -725,7 +725,7 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
         const reason = error instanceof Error ? error.message : String(error);
         const msg = `Unable to list serial ports. ${reason}`;
         showErrorMessage(msg);
-        logChannelOutput(msg, true);
+        outputChannelLogger.log(msg, true);
         return;
       }
     }
@@ -737,13 +737,13 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
       const workspaceWarning = 'No workspace folder is open. Device can connect, but it will not appear in PyDevice Explorer until you open a workspace folder.';
       showWarningMessage(workspaceWarning);
-      logChannelOutput(workspaceWarning, true);
+      outputChannelLogger.log(workspaceWarning, true);
     }
 
     if (getConnectedPyDeviceByPortPath(devicePath)) {
       const msg = `Device on ${devicePath} is already connected. Choose another serial port.`;
       showWarningMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -761,7 +761,7 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
       const reason = error instanceof Error ? error.message : String(error);
       const msg = `Failed to connect to board on ${devicePath} @ ${baudRate}${recoveryMode ? ' (recovery mode)' : ''}. ${reason}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     }
   });
 
@@ -793,7 +793,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
       const reason = error instanceof Error ? error.message : String(error);
       const msg = `Unable to list serial ports. ${reason}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -1258,7 +1258,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
           details: { error: reason }
         });
         showErrorMessage(msg);
-        logChannelOutput(msg, true);
+        outputChannelLogger.log(msg, true);
         updateProbeStatus('hidden');
         probeInProgress = false;
         probeCancelRequested = false;
@@ -1393,7 +1393,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
             }
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
-            logChannelOutput(`Probe failed for ${port.path}: ${reason}`, false);
+            outputChannelLogger.log(`Probe failed for ${port.path}: ${reason}`, false);
             probedRuntimeInfoByPath.delete(port.path);
             emitPyDeviceLoggerEvent({
               source: probeLoggerSource,
@@ -1714,7 +1714,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
             const reason = error instanceof Error ? error.message : String(error);
             const msg = `Failed to set device name for ${row.deviceId}. ${reason}`;
             showErrorMessage(msg);
-            logChannelOutput(msg, true);
+            outputChannelLogger.log(msg, true);
           }
         })();
       }
@@ -1912,7 +1912,7 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
     availablePorts = await listSerialDevices();
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    logChannelOutput(`Auto reconnect could not list serial ports before reconnecting: ${reason}`, false);
+    outputChannelLogger.log(`Auto reconnect could not list serial ports before reconnecting: ${reason}`, false);
   }
 
   const availablePortPaths = availablePorts ? new Set(availablePorts.map((port) => port.path)) : undefined;
@@ -1997,7 +1997,7 @@ export const tryReconnectBoardOnStartup = async (context: vscode.ExtensionContex
           status: ConnectStatus.Error,
           errorText: reason
         });
-        logChannelOutput(`Auto reconnect skipped for ${devicePath}: ${reason}`, false);
+        outputChannelLogger.log(`Auto reconnect skipped for ${devicePath}: ${reason}`, false);
       }
     }
   } finally {
@@ -2038,7 +2038,7 @@ export const initSetAutoReconnectCommand = (context: vscode.ExtensionContext) =>
 
     const msg = `Auto reconnect is now ${enabled ? 'enabled' : 'disabled'}.`;
     showInformationMessage(msg);
-    logChannelOutput(msg, true);
+    outputChannelLogger.log(msg, true);
   });
 
   context.subscriptions.push(command);
@@ -2055,7 +2055,7 @@ export const initSoftRebootBoardCommand = (context: vscode.ExtensionContext) => 
     if (!targetDeviceId) {
       const msg = 'Connect to a board before soft rebooting.';
       showWarningMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -2063,14 +2063,14 @@ export const initSoftRebootBoardCommand = (context: vscode.ExtensionContext) => 
     if (!state) {
       const msg = `Device ${targetDeviceId} is not connected.`;
       showWarningMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
     if (state.executionCount > 0) {
       const msg = `Device ${targetDeviceId} is currently executing. Stop execution before soft rebooting.`;
       showWarningMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -2079,7 +2079,7 @@ export const initSoftRebootBoardCommand = (context: vscode.ExtensionContext) => 
       await vscode.debug.stopDebugging(activeDebugSession);
       const msg = 'Stopped active debug session. Device will soft reboot on debug termination.';
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
       return;
     }
 
@@ -2087,12 +2087,12 @@ export const initSoftRebootBoardCommand = (context: vscode.ExtensionContext) => 
       await state.board.softReboot();
       const msg = `Device soft reboot complete for ${targetDeviceId}.`;
       showInformationMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const msg = `Device soft reboot failed for ${targetDeviceId}. ${reason}`;
       showErrorMessage(msg);
-      logChannelOutput(msg, true);
+      outputChannelLogger.log(msg, true);
     }
   });
 

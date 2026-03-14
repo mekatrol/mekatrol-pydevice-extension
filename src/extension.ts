@@ -4,7 +4,7 @@
  * views, background services, and lifecycle cleanup.
  */
 import * as vscode from 'vscode';
-import { initOutputChannel, logChannelOutput as logChannelOutput } from './logging/output-channel';
+import { outputChannelLogger } from './logging/output-channel';
 import { initCreateConfigCommand } from './commands/create-config-command';
 import { initAutoDetectDevicesCommand } from './commands/auto-detect-devices-command';
 import {
@@ -32,8 +32,8 @@ import { initSetLoggerAutoStartCommand } from './commands/set-logger-autostart-c
 // Your extension is activated the very first time the command is executed
 export const activate = async (context: vscode.ExtensionContext) => {
   // Initialise output channel for logging
-  initOutputChannel();
-  logChannelOutput('Mekatrol PyDevice activated...', false);
+  outputChannelLogger.init();
+  outputChannelLogger.log('Mekatrol PyDevice activated...', false);
 
   const logStartup = (message: string, isError: boolean = false): void => {
     const line = `[PyDevice startup] ${message}`;
@@ -42,7 +42,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     } else {
       console.log(line);
     }
-    logChannelOutput(line, isError);
+    outputChannelLogger.log(line, isError);
   };
 
   logStartup('Activation started.');
@@ -88,7 +88,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
     excludedPaths: ['.vscode', '.pydevice']
   });
   fileWatcherOutputLogSubscription = fileWatcher.onDidLog((entry) => {
-    logChannelOutput(entry.message, entry.isError);
+    outputChannelLogger.log(entry.message, entry.isError);
   });
   fileWatcher.start();
   const loggerAutoStart = getWorkspaceCacheValue<boolean>(loggerAutoStartCacheKey) ?? true;

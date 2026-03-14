@@ -11,7 +11,7 @@ import {
   getConnectedPyDevice,
   getConnectedPyDevices
 } from '../commands/connect-board-command';
-import { logChannelOutput } from '../logging/output-channel';
+import { outputChannelLogger } from '../logging/output-channel';
 import { getDeviceHostFolderMappings, loadConfiguration } from '../utils/configuration';
 import { toRelativePath } from '../utils/device-filesystem';
 import { pyDeviceInternalTimeouts } from '../constants/timeout-constants';
@@ -142,7 +142,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         }
         appendDeviceReplOutput(targetDeviceId, normalised);
         this.sendEvent('output', { category, output: normalised });
-        logChannelOutput(normalised, true);
+        outputChannelLogger.log(normalised, true);
       };
 
       const { stderr } = await board.execRawCaptureStreaming(
@@ -159,7 +159,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         exitCode = 1;
       }
 
-      logChannelOutput(`Run on device ${targetDeviceId} completed: ${this.displayPath(targetUri)}`, true);
+      outputChannelLogger.log(`Run on device ${targetDeviceId} completed: ${this.displayPath(targetUri)}`, true);
     } catch (error) {
       exitCode = 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -167,7 +167,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         category: 'stderr',
         output: this.ensureTrailingNewline(message)
       });
-      logChannelOutput(`Run on device failed: ${message}`, true);
+      outputChannelLogger.log(`Run on device failed: ${message}`, true);
     } finally {
       if (this.launchDeviceId) {
         endBoardExecution(this.launchDeviceId);
@@ -381,10 +381,10 @@ const softRebootConnectedPyDevice = async (deviceId: string, successMessage: str
 
   try {
     await board.softReboot();
-    logChannelOutput(successMessage, true);
+    outputChannelLogger.log(successMessage, true);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logChannelOutput(`${failurePrefix}: ${message}`, true);
+    outputChannelLogger.log(`${failurePrefix}: ${message}`, true);
   }
 };
 
