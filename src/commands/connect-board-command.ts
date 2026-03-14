@@ -13,6 +13,7 @@ import { ConnectedPyDeviceRegistry, ConnectedPyDeviceState, ConnectedPyDeviceSna
 import { ReconnectStateStore } from '../devices/registry/reconnect-state-store';
 import { toDeviceId } from '../devices/identity/device-id';
 import { SerialDeviceProber } from '../devices/discovery/serial-device-prober';
+import { setPyDeviceControllerPortProbingEnabled } from '../devices/controller/py-device-controller-singleton';
 import { getDeviceNames, loadConfiguration, updateDeviceName } from '../utils/configuration';
 import {
   ConnectRow,
@@ -821,6 +822,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
         ]
       }
     );
+    setPyDeviceControllerPortProbingEnabled(true);
     panel.webview.html = renderConnectHtml(
       panel.webview,
       context.extensionUri,
@@ -846,6 +848,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
 
     panel.onDidDispose(() => {
       disposed = true;
+      setPyDeviceControllerPortProbingEnabled(false);
     });
 
     const pushRows = (): void => {

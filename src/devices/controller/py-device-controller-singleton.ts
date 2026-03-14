@@ -5,7 +5,6 @@
  */
 import { loadConfiguration } from '../../utils/configuration';
 import { listAllSerialPorts } from '../../utils/serial-port';
-import { autoReconnectDevicesCacheKey, getWorkspaceCacheValue } from '../../utils/workspace-cache';
 import { PyDeviceState } from '../py-device';
 import { DeviceSerialPort } from '../connection/device-serial-port';
 import { PyDeviceController } from './py-device-controller';
@@ -14,6 +13,7 @@ const defaultBaudRate = 115200;
 
 let singleton: PyDeviceController | undefined;
 let startupPromise: Promise<PyDeviceController> | undefined;
+let portProbingEnabled = false;
 
 type ConfiguredState = Record<string, Omit<PyDeviceState, 'deviceId' | 'connectedSerialPortPath' | 'runtimeInfo'>>;
 
@@ -37,7 +37,7 @@ const createController = (): PyDeviceController => {
     baudRate: defaultBaudRate,
     listPorts: listAllSerialPorts,
     probeRuntimeInfo: async (serialPort: DeviceSerialPort) => serialPort.probeRuntimeInfo(),
-    shouldProbePorts: () => getWorkspaceCacheValue<boolean>(autoReconnectDevicesCacheKey) ?? false,
+    shouldProbePorts: () => portProbingEnabled,
     readConfiguredState
   });
 };
@@ -67,8 +67,20 @@ export const getPyDeviceController = (): PyDeviceController | undefined => {
   return singleton;
 };
 
+export const setPyDeviceControllerPortProbingEnabled = (enabled: boolean): void => {
+  if (portProbingEnabled === enabled) {
+    return;
+  }
+
+  portProbingEnabled = enabled;
+  if (singleton) {
+    void singleton.reconcileNow();
+  }
+};
+
 export const stopPyDeviceController = (): void => {
   startupPromise = undefined;
+  portProbingEnabled = false;
   if (!singleton) {
     return;
   }
