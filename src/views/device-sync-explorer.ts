@@ -84,6 +84,7 @@ const deviceCreateConfirmPollIntervalMs = 150;
 const hasHostSyncChildFoldersContextKey = 'mekatrol.pydevice.hasHostSyncChildFolders';
 const hasMappedHostMappingsContextKey = 'mekatrol.pydevice.hasMappedHostMappings';
 const mappedDeviceIdsContextKey = 'mekatrol.pydevice.mappedDeviceIds';
+const connectedDeviceIdsContextKey = 'mekatrol.pydevice.connectedDeviceIds';
 const explorerHasWorkspaceContextKey = 'mekatrol.pydevice.explorerHasWorkspace';
 const explorerHasConfigurationContextKey = 'mekatrol.pydevice.explorerHasConfiguration';
 const explorerHasSyncFolderContextKey = 'mekatrol.pydevice.explorerHasSyncFolder';
@@ -248,6 +249,7 @@ class DeviceSyncModel {
     await vscode.commands.executeCommand('setContext', hasHostSyncChildFoldersContextKey, this.mappableHostFolders.length > 0);
     await vscode.commands.executeCommand('setContext', hasMappedHostMappingsContextKey, Object.keys(this.deviceHostFolderMappings).length > 0);
     await vscode.commands.executeCommand('setContext', mappedDeviceIdsContextKey, this.getMappedHostDeviceIds());
+    await vscode.commands.executeCommand('setContext', connectedDeviceIdsContextKey, this.getConnectedDeviceIds());
   }
 
   private logSyncEvent(action: string, message: string, details?: Record<string, unknown>): void {
@@ -1846,10 +1848,10 @@ class DeviceSyncModel {
     await this.openDeviceDiff(quickPickNode);
   }
 
-  async openSyncFiles(node?: SyncNode): Promise<void> {
+  async openSyncFiles(target?: DeviceTarget): Promise<void> {
     const startedAt = Date.now();
-    const targetNode = this.resolveTargetNode(node);
-    const deviceId = await this.ensureActiveDevice(targetNode);
+    const targetNode = target instanceof SyncNode ? this.resolveTargetNode(target) : undefined;
+    const deviceId = await this.ensureActiveDevice(target ?? targetNode);
     if (!deviceId) {
       this.logSyncEvent('sync-view-skipped', 'Sync view request skipped because no device is selected.');
       showWarningMessage('Select a device before opening sync files.');
@@ -4540,8 +4542,8 @@ class DeviceSyncModel {
     await this.refresh(true, false);
   }
 
-  async setDeviceName(node?: SyncNode): Promise<void> {
-    let deviceId = await this.ensureActiveDevice(node);
+  async setDeviceName(target?: DeviceTarget): Promise<void> {
+    let deviceId = await this.ensureActiveDevice(target);
     if (!deviceId) {
       deviceId = await this.pickKnownDeviceId(t('Select device to set name'));
       if (deviceId) {
@@ -4618,8 +4620,8 @@ class DeviceSyncModel {
     await this.refresh(true, false);
   }
 
-  async closeDeviceConnection(node?: SyncNode): Promise<void> {
-    const deviceId = this.getNodeDeviceId(node);
+  async closeDeviceConnection(target?: DeviceTarget): Promise<void> {
+    const deviceId = this.getNodeDeviceId(target);
     if (!deviceId) {
       showWarningMessage('Select a connected device to disconnect.');
       return;

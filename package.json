@@ -39,7 +39,7 @@
       },
       {
         "command": "mekatrol.pydevice.connectboardwithpicker",
-        "title": "PyDevice: Connect to board (choose port)",
+        "title": "Connect to board (choose port)",
         "icon": "$(plug)"
       },
       {
@@ -65,35 +65,35 @@
       },
       {
         "command": "mekatrol.pydevice.setautoreconnect",
-        "title": "PyDevice: Set auto reconnect"
+        "title": "Set auto reconnect"
       },
       {
         "command": "mekatrol.pydevice.setloggerautostart",
-        "title": "PyDevice: Set logger auto start"
+        "title": "Set logger auto start"
       },
       {
         "command": "mekatrol.pydevice.refreshsyncview",
-        "title": "PyDevice: Refresh sync explorer",
+        "title": "Refresh sync explorer",
         "icon": "$(refresh)"
       },
       {
         "command": "mekatrol.pydevice.explorerprerequisiteshint",
-        "title": "PyDevice: Explorer setup required",
+        "title": "Explorer setup required",
         "icon": "$(info)"
       },
       {
         "command": "mekatrol.pydevice.explorerinitialiseworkspace",
-        "title": "PyDevice: Initialize PyDevice Workspace",
+        "title": "Initialize PyDevice Workspace",
         "icon": "$(tools)"
       },
       {
         "command": "mekatrol.pydevice.syncfromdevice",
-        "title": "PyDevice: Sync from device to computer",
+        "title": "Sync from device to computer",
         "icon": "$(cloud-download)"
       },
       {
         "command": "mekatrol.pydevice.synctodevice",
-        "title": "PyDevice: Sync from computer to device",
+        "title": "Sync from computer to device",
         "icon": "$(cloud-upload)"
       },
       {
@@ -131,11 +131,11 @@
       },
       {
         "command": "mekatrol.pydevice.openrepl",
-        "title": "PyDevice: Open REPL console"
+        "title": "Open REPL console"
       },
       {
         "command": "mekatrol.pydevice.clearrepl",
-        "title": "PyDevice: Clear REPL console",
+        "title": "Clear REPL console",
         "icon": {
           "light": "images/clear-all-light.svg",
           "dark": "images/clear-all-dark.svg"
@@ -143,7 +143,7 @@
       },
       {
         "command": "mekatrol.pydevice.clearreplhistory",
-        "title": "PyDevice: Clear REPL command history",
+        "title": "Clear REPL command history",
         "icon": {
           "light": "images/clear-history-light.svg",
           "dark": "images/clear-history-dark.svg"
@@ -177,15 +177,15 @@
       },
       {
         "command": "mekatrol.pydevice.adddevicelibraryfolder",
-        "title": "PyDevice: Add device library folder"
+        "title": "Add device library folder"
       },
       {
         "command": "mekatrol.pydevice.removedevicelibraryfolder",
-        "title": "PyDevice: Remove device library folder"
+        "title": "Remove device library folder"
       },
       {
         "command": "mekatrol.pydevice.setdevicename",
-        "title": "PyDevice: Set device name"
+        "title": "Set device name"
       },
       {
         "command": "mekatrol.pydevice.excludedevicefilefromsync",
@@ -439,14 +439,39 @@
       ],
       "explorer/context": [
         {
+          "command": "mekatrol.pydevice.connectboardwithpicker",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && !(resourceFilename in mekatrol.pydevice.connectedDeviceIds)",
+          "group": "pydevice@1"
+        },
+        {
+          "command": "mekatrol.pydevice.connectboardrecovery",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && !(resourceFilename in mekatrol.pydevice.connectedDeviceIds)",
+          "group": "pydevice@2"
+        },
+        {
+          "command": "mekatrol.pydevice.opensyncfiles",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.connectedDeviceIds",
+          "group": "pydevice@3"
+        },
+        {
+          "command": "mekatrol.pydevice.closedeviceconnection",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.connectedDeviceIds",
+          "group": "pydevice@4"
+        },
+        {
           "command": "mekatrol.pydevice.mapdevicehostfolder",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && mekatrol.pydevice.hasHostSyncChildFolders && !(resourceFilename in mekatrol.pydevice.mappedDeviceIds)",
-          "group": "deviceMapping@1"
+          "group": "pydevice@5"
         },
         {
           "command": "mekatrol.pydevice.unmapdevicehostfolder",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.mappedDeviceIds",
-          "group": "deviceMapping@2"
+          "group": "pydevice@6"
+        },
+        {
+          "command": "mekatrol.pydevice.setdevicename",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
+          "group": "pydevice@7"
         }
       ],
       "view/item/context": [
@@ -454,16 +479,6 @@
           "command": "mekatrol.pydevice.opencomputersyncitem",
           "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded)",
           "group": "navigation@1"
-        },
-        {
-          "command": "mekatrol.pydevice.connectboardwithpicker",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
-          "group": "inline@1"
-        },
-        {
-          "command": "mekatrol.pydevice.connectboardrecovery",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
-          "group": "inline@1.5"
         },
         {
           "command": "mekatrol.pydevice.closealldeviceconnections",
@@ -479,11 +494,6 @@
           "command": "mekatrol.pydevice.autodetectdevices",
           "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceRoot",
           "group": "navigation@2.5"
-        },
-        {
-          "command": "mekatrol.pydevice.opensyncfiles",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && mekatrol.pydevice.boardConnected && (viewItem == pydevice.deviceRoot || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded || viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing)",
-          "group": "navigation@3"
         },
         {
           "command": "mekatrol.pydevice.opendevicefile",
@@ -534,16 +544,6 @@
           "command": "mekatrol.pydevice.removedevicelibraryfolder",
           "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
           "group": "navigation@11.3"
-        },
-        {
-          "command": "mekatrol.pydevice.setdevicename",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
-          "group": "navigation@12"
-        },
-        {
-          "command": "mekatrol.pydevice.closedeviceconnection",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
-          "group": "navigation@13"
         }
       ]
     },
