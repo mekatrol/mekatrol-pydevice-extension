@@ -19,6 +19,7 @@ import {
   getDeviceHostFolderMappings,
   getDeviceSyncExcludedPaths,
   loadConfiguration,
+  onPyDeviceConfigurationUpdated,
   updateDeviceLibraryFolders,
   updateDeviceName,
   updateDeviceSyncExcludedPaths,
@@ -3901,7 +3902,9 @@ class DeviceSyncModel {
   }
 
   getDeviceUriSegment(deviceId: string): string {
-    return this.getDeviceName(deviceId) ?? deviceId;
+    // Keep the backing URI segment stable so display names do not leak into
+    // `.pydevice/.device-mirror` paths or other filesystem-backed locations.
+    return deviceId;
   }
 
   private async syncNameHistory(): Promise<void> {
@@ -6845,6 +6848,9 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
       void model.refresh(false, false);
     }
   }));
+  context.subscriptions.push(onPyDeviceConfigurationUpdated(() => {
+    void model.refresh(false, false);
+  }));
   context.subscriptions.push(onBoardConnectionsChanged((snapshots) => {
     const nextConnectedDeviceIds = snapshots.map((item) => item.deviceId).sort((a, b) => a.localeCompare(b));
     const previousConnectedIds = new Set(lastConnectedDeviceIds);
@@ -6852,6 +6858,12 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     deviceFsProvider.notifyConnectedDeviceRootsChanged(lastConnectedDeviceIds, nextConnectedDeviceIds);
     lastConnectedDeviceIds = nextConnectedDeviceIds;
     void model.refresh(hasNewConnection, false);
+  }));
+  context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => {
+    const relativePath = toRelativePath(vscode.workspace.asRelativePath(document.uri, false));
+    if (relativePath === configurationFileName) {
+      void model.refresh(false, false);
+    }
   }));
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document) => model.handleDocumentSaved(document)));
   context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event) => void deviceFsProvider.updateWorkingCopyFromDocument(event.document)));
