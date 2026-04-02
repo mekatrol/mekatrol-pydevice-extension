@@ -89,7 +89,11 @@ export const pyDeviceInternalTimeouts = {
   enterRawReplFastThresholdMs: 5000,
   enterRawReplPromptTimeoutMinimumMs: 1500,
   enterRawReplIdleReadMs: 120,
-  enterRawReplIdleReadMaxMs: 800,
+  enterRawReplIdleReadMaxMs: 1200,
   enterRawReplRetryReadMaxMs: 600,
-  enterRawReplRetryDelayMs: 120
+  enterRawReplRetryDelayMs: 120,
+  // When the board sends no data at all in response to interrupt sequences, cap
+  // the waitForDataContains timeout to this value so silent-board detection is
+  // fast rather than burning the full per-attempt budget.
+  enterRawReplNoResponsePromptMaxMs: 1000
 } as const;

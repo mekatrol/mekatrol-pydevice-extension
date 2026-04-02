@@ -363,7 +363,16 @@ class DeviceSyncModel {
     ]);
 
     const connected = getConnectedPyDevices();
-    connected.forEach((item) => this.knownDeviceIds.add(item.deviceId));
+    // Only surface devices that have a real identity. Connections that failed to
+    // retrieve runtime info receive a port-path fallback ID (port_*). Showing
+    // them in the tree before they are identified causes "Unknown device" nodes,
+    // triggers unnecessary file-listing attempts on an unresponsive board, and
+    // risks creating stale mirror directories. The background retry loop in
+    // connectBoardForPath promotes the ID once the device responds, at which
+    // point a notifyStateChanged fires and the tree is refreshed with the real ID.
+    connected
+      .filter((item) => !item.deviceId.startsWith('port_'))
+      .forEach((item) => this.knownDeviceIds.add(item.deviceId));
 
     for (const deviceId of this.knownDeviceIds) {
       const libraryMappings = await this.resolveDeviceLibraryMappings(deviceId);
@@ -526,7 +535,7 @@ class DeviceSyncModel {
       return this.selectedNode.data.deviceId;
     }
 
-    return this.activeDeviceId ?? getConnectedPyDevices()[0]?.deviceId;
+    return this.activeDeviceId ?? getConnectedPyDevices().find((item) => !item.deviceId.startsWith('port_'))?.deviceId;
   }
 
   private async ensureActiveDevice(node?: SyncNode): Promise<string | undefined> {

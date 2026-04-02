@@ -636,6 +636,7 @@ export class PyDeviceConnection {
     const rawPromptText = pyDeviceProtocolBuffers.rawReplPrompt;
     const rawPromptPrefix = pyDeviceProtocolBuffers.rawReplPromptPrefix;
     const rawPromptTail = pyDeviceProtocolBuffers.rawReplPromptTail;
+    const normalReplPrompt = pyDeviceProtocolBuffers.normalReplPrompt;
     const attempts = timeoutMs < pyDeviceInternalTimeouts.enterRawReplFastThresholdMs ? 2 : 3;
     const startedAt = Date.now();
     let lastError: unknown;
@@ -654,10 +655,28 @@ export class PyDeviceConnection {
 
       try {
         await this.write(pyDeviceCommandSequences.interruptTwice, { drain: false });
-        await this.readUntilIdle(pyDeviceInternalTimeouts.enterRawReplIdleReadMs, pyDeviceInternalTimeouts.enterRawReplIdleReadMaxMs);
+        const idleData = await this.readUntilIdle(pyDeviceInternalTimeouts.enterRawReplIdleReadMs, pyDeviceInternalTimeouts.enterRawReplIdleReadMaxMs);
+
+        // If the interrupt didn't bring the device to the normal REPL prompt (e.g. the board
+        // was running code that hasn't stopped yet), send one more interrupt and wait again
+        // before issuing Ctrl-A. This handles boards that need extra time to halt.
+        let secondIdleData: Buffer = Buffer.alloc(0);
+        if (idleData.indexOf(normalReplPrompt) < 0) {
+          await this.write(pyDeviceCommandSequences.interrupt, { drain: false });
+          secondIdleData = await this.readUntilIdle(pyDeviceInternalTimeouts.enterRawReplIdleReadMs, pyDeviceInternalTimeouts.enterRawReplRetryReadMaxMs);
+        }
+
+        // If the board sent no bytes at all in response to the interrupt sequence it is
+        // likely hardware-unresponsive (running tight code, REPL not yet active, etc.).
+        // Cap the Ctrl-A wait to a short probe window so we fail fast and let the caller
+        // escalate to a hard reboot rather than burning the full per-attempt budget.
+        const boardIsResponding = idleData.length > 0 || secondIdleData.length > 0;
+        const effectivePromptTimeoutMs = boardIsResponding
+          ? promptTimeoutMs
+          : Math.min(promptTimeoutMs, pyDeviceInternalTimeouts.enterRawReplNoResponsePromptMaxMs);
 
         await this.write(pyDeviceCommandSequences.enterRawRepl, { drain: false });
-        await this.waitForDataContains([rawPromptText, rawPromptPrefix, rawPromptTail], promptTimeoutMs);
+        await this.waitForDataContains([rawPromptText, rawPromptPrefix, rawPromptTail], effectivePromptTimeoutMs);
         return;
       } catch (error) {
         lastError = error;
@@ -850,8 +869,9 @@ export class PyDeviceConnection {
     });
   }
 
-  private async readUntilIdle(idleMs: number, maxMs: number): Promise<void> {
+  private async readUntilIdle(idleMs: number, maxMs: number): Promise<Buffer> {
     this.assertPortOpen();
+    const chunks: Buffer[] = [];
 
     await new Promise<void>((resolve) => {
       let idleTimer: NodeJS.Timeout | undefined;
@@ -877,6 +897,7 @@ export class PyDeviceConnection {
 
       const onData = (chunk: Buffer) => {
         this.emitIO('rx', chunk);
+        chunks.push(chunk);
         if (idleTimer) {
           clearTimeout(idleTimer);
         }
@@ -894,6 +915,8 @@ export class PyDeviceConnection {
       this.serialPort!.on('data', onData);
       this.serialPort!.on('error', onError);
     });
+
+    return Buffer.concat(chunks);
   }
 
   assertPortOpen() {

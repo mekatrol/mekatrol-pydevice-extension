@@ -156,6 +156,18 @@ const readBoardRuntimeInfoWithRetries = async (
     }
   }
 
+  // All REPL-based attempts failed. The board may be running code that doesn't
+  // yield to USB serial handlers, or the REPL is in an inconsistent state.
+  // Try a hard reboot (close/reopen the port, which triggers a board reset on
+  // most RP2040/STM32 boards) and then attempt one final read.
+  try {
+    await board.hardReboot();
+    await wait(1500); // board boot time after reset
+    return await board.getDeviceInfo();
+  } catch {
+    // hard reboot also failed; fall through to warning
+  }
+
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
   const message = `Connected, but failed to read board runtime info for ${devicePath} after ${attempts} attempt(s): ${reason}`;
   outputChannelLogger.log(message, true);
@@ -413,6 +425,11 @@ const connectBoardForPath = async (
   const board = new MicroPythonDevice(devicePath, baudRate, showMessages);
   await board.open();
 
+  // Give the USB-CDC device a moment to become active. On many boards (RP2040, STM32)
+  // the REPL doesn't start responding until the USB stack has processed the DTR/line-state
+  // notification sent when the host opens the port.
+  await wait(500);
+
   const runtimeInfo = recoveryMode
     ? await readBoardRuntimeInfoWithRecovery(board, devicePath)
     : await readBoardRuntimeInfoWithRetries(
@@ -439,12 +456,22 @@ const connectBoardForPath = async (
   await reconnectStateStore.addReconnectDevicePath(board.device);
   notifyStateChanged();
 
-  void syncDeviceToMirror(board, state.deviceId)
-    .then(() => outputChannelLogger.log(`Device mirror synced for ${state.deviceId}.`, false))
-    .catch((error: unknown) => {
-      const reason = error instanceof Error ? error.message : String(error);
-      outputChannelLogger.log(`Device mirror sync failed for ${state.deviceId}: ${reason}`, true);
-    });
+  const startMirrorSync = (deviceId: string): void => {
+    void syncDeviceToMirror(board, deviceId)
+      .then(() => outputChannelLogger.log(`Device mirror synced for ${deviceId}.`, false))
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        outputChannelLogger.log(`Device mirror sync failed for ${deviceId}: ${reason}`, true);
+      });
+  };
+
+  // Only sync the mirror when we have a real device identity. If runtime info was
+  // not available the deviceId is a port-path fallback (port_*), and creating a
+  // mirror directory under that name would leave stale junk if the board later
+  // identifies itself with a proper ID.
+  if (runtimeInfo) {
+    startMirrorSync(state.deviceId);
+  }
 
   const applyRefreshedRuntimeInfo = async (refreshedRuntimeInfo: PyDeviceRuntimeInfo): Promise<void> => {
     const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
@@ -452,10 +479,10 @@ const connectBoardForPath = async (
       return;
     }
 
-    boardRegistry.setRuntimeInfo(state.deviceId, refreshedRuntimeInfo);
+    const previousDeviceId = state.deviceId;
+    boardRegistry.setRuntimeInfo(previousDeviceId, refreshedRuntimeInfo);
     const promotedDeviceId = toDeviceId(state.board.device, refreshedRuntimeInfo);
-    if (promotedDeviceId !== state.deviceId) {
-      const previousDeviceId = state.deviceId;
+    if (promotedDeviceId !== previousDeviceId) {
       if (boardRegistry.hasDeviceId(promotedDeviceId)) {
         outputChannelLogger.log(
           `Runtime info discovered new device ID ${promotedDeviceId} for ${state.board.device}, but it is already connected.`,
@@ -465,6 +492,13 @@ const connectBoardForPath = async (
         outputChannelLogger.log(`Promoted device ID for ${state.board.device}: ${previousDeviceId} -> ${promotedDeviceId}.`, false);
       }
     }
+
+    // If mirror sync was deferred because runtime info was absent at connect time,
+    // start it now that we have a confirmed device identity.
+    if (!runtimeInfo) {
+      startMirrorSync(state.deviceId);
+    }
+
     notifyStateChanged();
   };
 

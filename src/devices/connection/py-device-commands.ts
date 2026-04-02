@@ -65,6 +65,7 @@ export const pyDeviceProtocolBuffers = {
   rawReplPrompt: Buffer.from(pyDeviceProtocolText.rawReplPrompt),
   rawReplPromptPrefix: Buffer.from(pyDeviceProtocolText.rawReplPromptPrefix),
   rawReplPromptTail: Buffer.from(pyDeviceProtocolText.rawReplPromptTail),
+  normalReplPrompt: Buffer.from(pyDeviceProtocolText.normalReplPrompt),
   softRebootBanner: Buffer.from(pyDeviceProtocolText.softRebootBanner),
   rawCaptureResponseSuffix: Buffer.from([pyDeviceProtocolBytes.ctrlD, pyDeviceProtocolBytes.asciiGreaterThan])
 } as const;
