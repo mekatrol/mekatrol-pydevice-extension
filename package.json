@@ -169,11 +169,11 @@
       },
       {
         "command": "mekatrol.pydevice.mapdevicehostfolder",
-        "title": "Map device to computer folder"
+        "title": "Map device folder"
       },
       {
         "command": "mekatrol.pydevice.unmapdevicehostfolder",
-        "title": "Unmap device from computer folder"
+        "title": "Unmap device folder"
       },
       {
         "command": "mekatrol.pydevice.adddevicelibraryfolder",

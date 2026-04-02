@@ -21,6 +21,7 @@ import {
   getDeviceSyncExcludedPaths,
   loadConfiguration,
   onPyDeviceConfigurationUpdated,
+  pydeviceDirectoryName,
   updateDeviceLibraryFolders,
   updateDeviceName,
   updateDeviceSyncExcludedPaths,
@@ -4306,32 +4307,38 @@ class DeviceSyncModel {
   async mapDeviceToHostFolder(target?: DeviceTarget): Promise<void> {
     let deviceId = await this.ensureActiveDevice(target);
     if (!deviceId) {
-      deviceId = await this.pickKnownDeviceId('Select device to map');
+      deviceId = await this.pickKnownDeviceId('Select device to add a folder for');
       if (deviceId) {
         this.activateDevice(deviceId);
       }
     }
     if (!deviceId || !this.workspaceFolder) {
-      showWarningMessage('Select a device to map.');
+      showWarningMessage('Select a device and open a workspace to add a device folder.');
       return;
     }
 
-    const folderOptions = this.mappableHostFolders.map((folder) => {
-      const leafName = path.posix.basename(toRelativePath(folder));
-      return {
-        label: leafName,
-        description: folder,
-        relativePath: folder
-      };
+    const picked = await vscode.window.showOpenDialog({
+      title: `Select device folder for ${this.getDeviceDisplayNameWithId(deviceId)}`,
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri: this.workspaceFolder.uri,
+      openLabel: 'Add Device Folder'
     });
-
-    if (folderOptions.length === 0) {
-      showWarningMessage('No computer folders available at workspace root.');
+    if (!picked || picked.length === 0) {
       return;
     }
 
-    const normalised = await this.pickOrEnterHostFolderPath(deviceId, folderOptions);
-    if (!normalised) {
+    const selectedPath = picked[0].fsPath;
+    const workspacePath = this.workspaceFolder.uri.fsPath;
+    const relativeToWorkspace = path.relative(workspacePath, selectedPath);
+    const normalised = toRelativePath(relativeToWorkspace);
+    if (!normalised || path.isAbsolute(normalised) || /^[A-Za-z]:\//.test(normalised)) {
+      showWarningMessage('Selected folder must resolve to a relative path from the current workspace.');
+      return;
+    }
+    if (!this.isHostFolderEligibleForMapping(normalised)) {
+      showWarningMessage(`"${toRelativePath(configurationFileName).split('/')[0]}" cannot be used as a device folder.`);
       return;
     }
 
@@ -4355,69 +4362,22 @@ class DeviceSyncModel {
     await this.refresh(true, false);
   }
 
-  private async pickOrEnterHostFolderPath(
-    deviceId: string,
-    folderOptions: Array<{ label: string; description: string; relativePath: string }>
-  ): Promise<string | undefined> {
-    const picker = vscode.window.createQuickPick<{ label: string; description: string; relativePath: string }>();
-    picker.title = 'Map Device to Computer Folder';
-    picker.placeholder = `Select or type computer folder for ${deviceId}`;
-    picker.ignoreFocusOut = true;
-    picker.items = folderOptions;
-    picker.matchOnDescription = true;
-
-    return await new Promise<string | undefined>((resolve) => {
-      let settled = false;
-      const finish = (value: string | undefined): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        picker.hide();
-        picker.dispose();
-        resolve(value);
-      };
-
-      picker.onDidAccept(() => {
-        const selected = picker.selectedItems[0];
-        const rawValue = selected?.relativePath ?? picker.value;
-        const normalised = toRelativePath(rawValue);
-        if (!normalised) {
-          void showWarningMessage('Enter a folder name.');
-          return;
-        }
-        if (path.isAbsolute(normalised) || normalised.split('/').includes('..')) {
-          void showWarningMessage('Use a workspace-relative folder path.');
-          return;
-        }
-        if (!this.isHostFolderEligibleForMapping(normalised)) {
-          void showWarningMessage(`"${toRelativePath(configurationFileName).split('/')[0]}" cannot be used as a mapped computer folder.`);
-          return;
-        }
-        finish(normalised);
-      });
-
-      picker.onDidHide(() => finish(undefined));
-      picker.show();
-    });
-  }
-
   async unmapDeviceFromHostFolder(target?: DeviceTarget): Promise<void> {
     let deviceId = await this.ensureActiveDevice(target);
     if (!deviceId) {
-      deviceId = await this.pickKnownDeviceId('Select device to unmap');
+      deviceId = await this.pickKnownDeviceId('Select device to remove a folder from');
       if (deviceId) {
         this.activateDevice(deviceId);
       }
     }
     if (!deviceId) {
-      showWarningMessage('Select a device to unmap.');
+      showWarningMessage('Select a device to remove a device folder from.');
       return;
     }
 
     const current = this.getMappedHostFolder(deviceId);
     if (!current) {
-      showInformationMessage(`No mapped computer folder exists for ${deviceId}.`);
+      showInformationMessage(`No device folder configured for ${deviceId}.`);
       return;
     }
 
@@ -4466,6 +4426,15 @@ class DeviceSyncModel {
 
     const selectedPath = picked[0].fsPath;
     const workspacePath = this.workspaceFolder.uri.fsPath;
+    const pydeviceFolderPath = path.join(workspacePath, pydeviceDirectoryName);
+    const relativeToPydeviceFolder = path.relative(pydeviceFolderPath, selectedPath);
+    const isPydeviceFolderSelection = relativeToPydeviceFolder === ''
+      || (!relativeToPydeviceFolder.startsWith('..') && !path.isAbsolute(relativeToPydeviceFolder));
+    if (isPydeviceFolderSelection) {
+      showWarningMessage(`Cannot add ${pydeviceDirectoryName} as a device library folder.`);
+      return;
+    }
+
     const relativeToWorkspace = path.relative(workspacePath, selectedPath);
     const normalisedRelativePath = toRelativePath(relativeToWorkspace);
     if (!normalisedRelativePath || path.isAbsolute(normalisedRelativePath) || /^[A-Za-z]:\//.test(normalisedRelativePath)) {
