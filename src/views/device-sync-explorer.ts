@@ -249,10 +249,8 @@ class DeviceSyncModel {
   private openTabNameSyncKey: string | undefined;
   private nameHistoryByLower: Record<string, string>;
   private lastRefreshError: string | undefined;
-  private hasWarnedNoWorkspaceFolder = false;
   private explorerReady = false;
   private hasConfigurationFile = false;
-  private hasWarnedMissingConfiguration = false;
   
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -343,12 +341,6 @@ class DeviceSyncModel {
     await vscode.commands.executeCommand('setContext', explorerReadyContextKey, this.explorerReady);
 
     if (!hasWorkspace) {
-      if (!this.hasWarnedNoWorkspaceFolder) {
-        const message = 'Open a workspace folder to show devices in PyDevice Explorer.';
-        this.hasWarnedNoWorkspaceFolder = true;
-        showWarningMessage(message);
-        outputChannelLogger.log(message, true);
-      }
       this.computerEntries = [{ relativePath: '', isDirectory: true }];
       this.deviceEntries = [{ relativePath: '', isDirectory: true }];
       this.syncStates = new Map();
@@ -360,14 +352,7 @@ class DeviceSyncModel {
       this.onDidChangeDataEmitter.fire();
       return;
     }
-    this.hasWarnedNoWorkspaceFolder = false;
     if (!hasConfiguration) {
-      if (!this.hasWarnedMissingConfiguration) {
-        const message = `Create "${configurationFileName}" to enable PyDevice Explorer.`;
-        this.hasWarnedMissingConfiguration = true;
-        showWarningMessage(message);
-        outputChannelLogger.log(message, true);
-      }
       this.computerEntries = [{ relativePath: '', isDirectory: true }];
       this.deviceEntries = [{ relativePath: '', isDirectory: true }];
       this.syncStates = new Map();
@@ -379,7 +364,6 @@ class DeviceSyncModel {
       this.onDidChangeDataEmitter.fire();
       return;
     }
-    this.hasWarnedMissingConfiguration = false;
     const config = await loadConfiguration();
     this.deviceHostFolderMappings = getDeviceHostFolderMappings(config);
     this.deviceLibraryFolderMappings = getDeviceLibraryFolderMappings(config);

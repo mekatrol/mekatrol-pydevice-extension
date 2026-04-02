@@ -11,6 +11,8 @@ strict digraph "dependency-cruiser output"{
     "src/commands/auto-detect-devices-command.ts" -> "src/commands/connect-board-command.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/commands" {label="commands" "src/commands/connect-board-command.ts" [label=<connect-board-command.ts> tooltip="connect-board-command.ts" URL="src/commands/connect-board-command.ts" fillcolor="#ddfeff"] } }
     "src/commands/connect-board-command.ts" -> "src/constants/timeout-constants.ts"
+    "src/commands/connect-board-command.ts" -> "src/devices/connection/py-device-vscode-host-services.ts"
+    "src/commands/connect-board-command.ts" -> "src/devices/controller/py-device-controller-singleton.ts"
     "src/commands/connect-board-command.ts" -> "src/devices/discovery/serial-device-prober.ts"
     "src/commands/connect-board-command.ts" -> "src/devices/identity/device-id.ts"
     "src/commands/connect-board-command.ts" -> "src/devices/py-device.ts"
@@ -19,6 +21,7 @@ strict digraph "dependency-cruiser output"{
     "src/commands/connect-board-command.ts" -> "src/logging/output-channel.ts"
     "src/commands/connect-board-command.ts" -> "src/logging/pydevice-logger-events.ts"
     "src/commands/connect-board-command.ts" -> "src/utils/configuration.ts"
+    "src/commands/connect-board-command.ts" -> "src/utils/device-filesystem.ts"
     "src/commands/connect-board-command.ts" -> "src/utils/i18n.ts"
     "src/commands/connect-board-command.ts" -> "src/utils/serial-port.ts"
     "src/commands/connect-board-command.ts" -> "src/utils/timeout-settings.ts"
@@ -40,6 +43,7 @@ strict digraph "dependency-cruiser output"{
     "src/commands/set-logger-autostart-command.ts" -> "src/utils/workspace-cache.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/constants" {label="constants" "src/constants/timeout-constants.ts" [label=<timeout-constants.ts> tooltip="timeout-constants.ts" URL="src/constants/timeout-constants.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/core" {label="core" "src/core/disposable.ts" [label=<disposable.ts> tooltip="disposable.ts" URL="src/core/disposable.ts" fillcolor="#ccffcc"] } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/core" {label="core" "src/core/event.ts" [label=<event.ts> tooltip="event.ts" URL="src/core/event.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/debug" {label="debug" "src/debug/py-device-debug.ts" [label=<py-device-debug.ts> tooltip="py-device-debug.ts" URL="src/debug/py-device-debug.ts" fillcolor="#ddfeff"] } }
     "src/debug/py-device-debug.ts" -> "src/commands/connect-board-command.ts"
     "src/debug/py-device-debug.ts" -> "src/constants/timeout-constants.ts"
@@ -47,27 +51,35 @@ strict digraph "dependency-cruiser output"{
     "src/debug/py-device-debug.ts" -> "src/utils/configuration.ts"
     "src/debug/py-device-debug.ts" -> "src/utils/device-filesystem.ts"
     "src/debug/py-device-debug.ts" -> "src/utils/i18n.ts"
+    "src/debug/py-device-debug.ts" -> "src/views/repl-view.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/device-serial-port.ts" [label=<device-serial-port.ts> tooltip="device-serial-port.ts" URL="src/devices/connection/device-serial-port.ts" fillcolor="#ddfeff"] } } }
     "src/devices/connection/device-serial-port.ts" -> "src/constants/timeout-constants.ts"
     "src/devices/connection/device-serial-port.ts" -> "src/logging/pydevice-logger-events.ts"
     "src/devices/connection/device-serial-port.ts" -> "src/utils/timeout-settings.ts"
     "src/devices/connection/device-serial-port.ts" -> "src/devices/py-device.ts"
+    "src/devices/connection/device-serial-port.ts" -> "src/devices/connection/py-device-vscode-host-services.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/micro-python-device.ts" [label=<micro-python-device.ts> tooltip="micro-python-device.ts" URL="src/devices/connection/micro-python-device.ts" fillcolor="#ddfeff"] } } }
     "src/devices/connection/micro-python-device.ts" -> "src/devices/connection/py-device-connection.ts"
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-commands.ts" [label=<py-device-commands.ts> tooltip="py-device-commands.ts" URL="src/devices/connection/py-device-commands.ts" fillcolor="#ddfeff"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-connection.ts" [label=<py-device-connection.ts> tooltip="py-device-connection.ts" URL="src/devices/connection/py-device-connection.ts" fillcolor="#ddfeff"] } } }
     "src/devices/connection/py-device-connection.ts" -> "src/constants/timeout-constants.ts"
-    "src/devices/connection/py-device-connection.ts" -> "src/logging/output-channel.ts"
-    "src/devices/connection/py-device-connection.ts" -> "src/logging/pydevice-logger-events.ts"
-    "src/devices/connection/py-device-connection.ts" -> "src/utils/i18n.ts"
-    "src/devices/connection/py-device-connection.ts" -> "src/utils/timeout-settings.ts"
+    "src/devices/connection/py-device-connection.ts" -> "src/core/event.ts"
+    "src/devices/connection/py-device-connection.ts" -> "src/devices/connection/py-device-commands.ts"
+    "src/devices/connection/py-device-connection.ts" -> "src/devices/connection/py-device-host-services.ts"
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-host-services.ts" [label=<py-device-host-services.ts> tooltip="py-device-host-services.ts" URL="src/devices/connection/py-device-host-services.ts" fillcolor="#ddfeff"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-io-event.ts" [label=<py-device-io-event.ts> tooltip="py-device-io-event.ts" URL="src/devices/connection/py-device-io-event.ts" fillcolor="#ccffcc"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-transport.ts" [label=<py-device-transport.ts> tooltip="py-device-transport.ts" URL="src/devices/connection/py-device-transport.ts" fillcolor="#ccffcc"] } } }
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/connection" {label="connection" "src/devices/connection/py-device-vscode-host-services.ts" [label=<py-device-vscode-host-services.ts> tooltip="py-device-vscode-host-services.ts" URL="src/devices/connection/py-device-vscode-host-services.ts" fillcolor="#ddfeff"] } } }
+    "src/devices/connection/py-device-vscode-host-services.ts" -> "src/constants/timeout-constants.ts"
+    "src/devices/connection/py-device-vscode-host-services.ts" -> "src/logging/output-channel.ts"
+    "src/devices/connection/py-device-vscode-host-services.ts" -> "src/logging/pydevice-logger-events.ts"
+    "src/devices/connection/py-device-vscode-host-services.ts" -> "src/utils/i18n.ts"
+    "src/devices/connection/py-device-vscode-host-services.ts" -> "src/utils/timeout-settings.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/controller" {label="controller" "src/devices/controller/py-device-controller-event.ts" [label=<py-device-controller-event.ts> tooltip="py-device-controller-event.ts" URL="src/devices/controller/py-device-controller-event.ts" fillcolor="#ccffcc"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/controller" {label="controller" "src/devices/controller/py-device-controller-options.ts" [label=<py-device-controller-options.ts> tooltip="py-device-controller-options.ts" URL="src/devices/controller/py-device-controller-options.ts" fillcolor="#ccffcc"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/controller" {label="controller" "src/devices/controller/py-device-controller-singleton.ts" [label=<py-device-controller-singleton.ts> tooltip="py-device-controller-singleton.ts" URL="src/devices/controller/py-device-controller-singleton.ts" fillcolor="#ddfeff"] } } }
     "src/devices/controller/py-device-controller-singleton.ts" -> "src/utils/configuration.ts"
     "src/devices/controller/py-device-controller-singleton.ts" -> "src/utils/serial-port.ts"
-    "src/devices/controller/py-device-controller-singleton.ts" -> "src/utils/workspace-cache.ts"
     "src/devices/controller/py-device-controller-singleton.ts" -> "src/devices/controller/py-device-controller.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/controller" {label="controller" "src/devices/controller/py-device-controller.ts" [label=<py-device-controller.ts> tooltip="py-device-controller.ts" URL="src/devices/controller/py-device-controller.ts" fillcolor="#ddfeff"] } } }
     "src/devices/controller/py-device-controller.ts" -> "src/devices/connection/device-serial-port.ts"
@@ -76,6 +88,7 @@ strict digraph "dependency-cruiser output"{
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/discovery" {label="discovery" "src/devices/discovery/probed-serial-device.ts" [label=<probed-serial-device.ts> tooltip="probed-serial-device.ts" URL="src/devices/discovery/probed-serial-device.ts" fillcolor="#ccffcc"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/discovery" {label="discovery" "src/devices/discovery/serial-device-prober.ts" [label=<serial-device-prober.ts> tooltip="serial-device-prober.ts" URL="src/devices/discovery/serial-device-prober.ts" fillcolor="#ddfeff"] } } }
     "src/devices/discovery/serial-device-prober.ts" -> "src/devices/connection/device-serial-port.ts"
+    "src/devices/discovery/serial-device-prober.ts" -> "src/devices/connection/py-device-vscode-host-services.ts"
     "src/devices/discovery/serial-device-prober.ts" -> "src/devices/py-device.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/identity" {label="identity" "src/devices/identity/device-id.ts" [label=<device-id.ts> tooltip="device-id.ts" URL="src/devices/identity/device-id.ts" fillcolor="#ddfeff"] } } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/devices" {label="devices" subgraph "cluster_src/devices/model" {label="model" "src/devices/model/py-device-model.ts" [label=<py-device-model.ts> tooltip="py-device-model.ts" URL="src/devices/model/py-device-model.ts" fillcolor="#ddfeff"] } } }
@@ -101,8 +114,8 @@ strict digraph "dependency-cruiser output"{
     "src/extension.ts" -> "src/logging/pydevice-logger.ts"
     "src/extension.ts" -> "src/utils/file-watcher.ts"
     "src/extension.ts" -> "src/utils/workspace-cache.ts"
+    "src/extension.ts" -> "src/views/device-mirror-decorations.ts"
     "src/extension.ts" -> "src/views/device-sync-explorer.ts"
-    "src/extension.ts" -> "src/views/extension-status-view.ts"
     "src/extension.ts" -> "src/views/repl-view.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/logging" {label="logging" "src/logging/output-channel.ts" [label=<output-channel.ts> tooltip="output-channel.ts" URL="src/logging/output-channel.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/logging" {label="logging" "src/logging/pydevice-logger-events.ts" [label=<pydevice-logger-events.ts> tooltip="pydevice-logger-events.ts" URL="src/logging/pydevice-logger-events.ts" fillcolor="#ddfeff"] } }
@@ -111,6 +124,7 @@ strict digraph "dependency-cruiser output"{
     subgraph "cluster_src" {label="src" subgraph "cluster_src/sync" {label="sync" "src/sync/sync-state-store.ts" [label=<sync-state-store.ts> tooltip="sync-state-store.ts" URL="src/sync/sync-state-store.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/configuration.ts" [label=<configuration.ts> tooltip="configuration.ts" URL="src/utils/configuration.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/device-filesystem.ts" [label=<device-filesystem.ts> tooltip="device-filesystem.ts" URL="src/utils/device-filesystem.ts" fillcolor="#ddfeff"] } }
+    "src/utils/device-filesystem.ts" -> "src/utils/configuration.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/file-watcher.ts" [label=<file-watcher.ts> tooltip="file-watcher.ts" URL="src/utils/file-watcher.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/i18n.ts" [label=<i18n.ts> tooltip="i18n.ts" URL="src/utils/i18n.ts" fillcolor="#ddfeff"] } }
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/serial-port.ts" [label=<serial-port.ts> tooltip="serial-port.ts" URL="src/utils/serial-port.ts" fillcolor="#ddfeff"] } }
@@ -120,6 +134,8 @@ strict digraph "dependency-cruiser output"{
     subgraph "cluster_src" {label="src" subgraph "cluster_src/utils" {label="utils" "src/utils/workspace-cache.ts" [label=<workspace-cache.ts> tooltip="workspace-cache.ts" URL="src/utils/workspace-cache.ts" fillcolor="#ddfeff"] } }
     "src/utils/workspace-cache.ts" -> "src/constants/timeout-constants.ts"
     "src/utils/workspace-cache.ts" -> "src/utils/configuration.ts"
+    subgraph "cluster_src" {label="src" subgraph "cluster_src/views" {label="views" "src/views/device-mirror-decorations.ts" [label=<device-mirror-decorations.ts> tooltip="device-mirror-decorations.ts" URL="src/views/device-mirror-decorations.ts" fillcolor="#ddfeff"] } }
+    "src/views/device-mirror-decorations.ts" -> "src/utils/configuration.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/views" {label="views" "src/views/device-sync-explorer.ts" [label=<device-sync-explorer.ts> tooltip="device-sync-explorer.ts" URL="src/views/device-sync-explorer.ts" fillcolor="#ddfeff"] } }
     "src/views/device-sync-explorer.ts" -> "src/commands/connect-board-command.ts"
     "src/views/device-sync-explorer.ts" -> "src/logging/output-channel.ts"
@@ -130,11 +146,10 @@ strict digraph "dependency-cruiser output"{
     "src/views/device-sync-explorer.ts" -> "src/utils/i18n.ts"
     "src/views/device-sync-explorer.ts" -> "src/utils/webview-template.ts"
     "src/views/device-sync-explorer.ts" -> "src/utils/workspace-cache.ts"
-    subgraph "cluster_src" {label="src" subgraph "cluster_src/views" {label="views" "src/views/extension-status-view.ts" [label=<extension-status-view.ts> tooltip="extension-status-view.ts" URL="src/views/extension-status-view.ts" fillcolor="#ddfeff"] } }
-    "src/views/extension-status-view.ts" -> "src/commands/connect-board-command.ts"
     subgraph "cluster_src" {label="src" subgraph "cluster_src/views" {label="views" "src/views/repl-view.ts" [label=<repl-view.ts> tooltip="repl-view.ts" URL="src/views/repl-view.ts" fillcolor="#ddfeff"] } }
     "src/views/repl-view.ts" -> "src/commands/connect-board-command.ts"
     "src/views/repl-view.ts" -> "src/constants/timeout-constants.ts"
+    "src/views/repl-view.ts" -> "src/devices/connection/py-device-commands.ts"
     "src/views/repl-view.ts" -> "src/utils/configuration.ts"
     "src/views/repl-view.ts" -> "src/utils/i18n.ts"
     "src/views/repl-view.ts" -> "src/utils/timeout-settings.ts"

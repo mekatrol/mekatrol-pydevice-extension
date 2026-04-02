@@ -22,7 +22,7 @@ import { initDeviceSyncExplorer } from './views/device-sync-explorer';
 import { initDeviceMirrorDecorations } from './views/device-mirror-decorations';
 import { initPyDeviceDebug } from './debug/py-device-debug';
 import { initReplView } from './views/repl-view';
-import { getWorkspaceCacheValue, initialiseWorkspaceCache, loggerAutoStartCacheKey, setWorkspaceCacheValue } from './utils/workspace-cache';
+import { getWorkspaceCacheValue, initialiseWorkspaceCache, loggerAutoStartCacheKey } from './utils/workspace-cache';
 import { initialisePyDeviceController, stopPyDeviceController } from './devices/controller/py-device-controller-singleton';
 import { FileWatcher } from './utils/file-watcher';
 import { disposePyDeviceLogger, initPyDeviceLogger, logPyDeviceLogger } from './logging/pydevice-logger';
@@ -60,10 +60,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
   }
 
   await initialiseWorkspaceCache();
-  const storedLoggerAutoStart = getWorkspaceCacheValue<boolean>(loggerAutoStartCacheKey);
-  if (storedLoggerAutoStart === undefined) {
-    await setWorkspaceCacheValue(loggerAutoStartCacheKey, true);
-  }
 
   let fileWatcherLoggerSubscription: vscode.Disposable | undefined;
   let fileWatcherOutputLogSubscription: vscode.Disposable | undefined;

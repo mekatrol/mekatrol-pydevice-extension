@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/mekatrol/mekatrol-pydevice-extension.git"
   },
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.98.0"
   },
@@ -568,6 +568,7 @@
     "vscode:prepublish": "npm run package",
     "vsce:package": "npx -y -p npm@10 -p @vscode/vsce vsce package",
     "vsce:publish": "npx -y -p npm@10 -p @vscode/vsce vsce publish",
+    "install:local": "node scripts/install-local-vsix.js",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

@@ -83,17 +83,11 @@ const saveCacheToPrimaryFile = async (): Promise<void> => {
 export const initialiseWorkspaceCache = async (): Promise<void> => {
   const primary = await loadCacheFromFile(workspaceCacheFileName);
   if (primary !== undefined) {
-    const merged = { ...defaultWorkspaceCache, ...primary };
-    cacheState = merged;
-    if (JSON.stringify(primary) !== JSON.stringify(merged)) {
-      await saveCacheToPrimaryFile();
-    }
+    cacheState = { ...defaultWorkspaceCache, ...primary };
     return;
   }
 
-  // Create default state
   cacheState = { ...defaultWorkspaceCache };
-  await saveCacheToPrimaryFile();
 };
 
 export const createDefaultWorkspaceCacheFile = async (): Promise<boolean> => {
