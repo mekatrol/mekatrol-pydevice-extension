@@ -689,6 +689,7 @@
     "check-types": "tsc --noEmit",
     "lint": "npm run check-types && eslint src",
     "test": "vscode-test",
+    "test:integration": "npm run compile-tests && vscode-test --files 'out/test/integration/**/*.test.js'",
     "arch:prepare": "node -e \"require('fs').mkdirSync('docs/architecture', { recursive: true })\"",
     "arch:dot": "npm run arch:prepare && depcruise --no-config src --include-only \"^src\" --exclude \"^src/test\" --output-type dot > docs/architecture/deps.dot",
     "arch:svg": "npm run arch:dot && node scripts/render-arch-svg.js",
