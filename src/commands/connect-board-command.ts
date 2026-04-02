@@ -16,6 +16,7 @@ import { SerialDeviceProber } from '../devices/discovery/serial-device-prober';
 import { setPyDeviceControllerPortProbingEnabled } from '../devices/controller/py-device-controller-singleton';
 import { getDeviceNames, loadConfiguration, updateDeviceName } from '../utils/configuration';
 import { syncDeviceToMirror } from '../utils/device-filesystem';
+import { createVscodePyDeviceHostServices } from '../devices/connection/py-device-vscode-host-services';
 import {
   ConnectRow,
   ConnectStatus,
@@ -422,7 +423,14 @@ const connectBoardForPath = async (
     return existingForPath;
   }
 
-  const board = new MicroPythonDevice(devicePath, baudRate, showMessages);
+  const board = new MicroPythonDevice(
+    devicePath,
+    baudRate,
+    showMessages,
+    'micro',
+    'python',
+    createVscodePyDeviceHostServices()
+  );
   await board.open();
 
   // Give the USB-CDC device a moment to become active. On many boards (RP2040, STM32)

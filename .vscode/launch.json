@@ -17,6 +17,27 @@
             ],
             "preLaunchTask": "${defaultBuildTask}",
             "sourceMaps": true
+        },
+        {
+            "name": "Debug Integration Test (Mocha)",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+            "args": [
+                "--ui",
+                "tdd",
+                "${workspaceFolder}/out/test/integration/**/*.test.js"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYDEVICE_PORT": "/dev/ttyACM0"
+            },
+            "preLaunchTask": "npm: compile-tests",
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ],
+            "sourceMaps": true,
+            "console": "integratedTerminal"
         }
     ]
 }

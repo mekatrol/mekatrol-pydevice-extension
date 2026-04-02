@@ -1,12 +1,12 @@
-import * as vscode from 'vscode';
 import { SerialPort } from 'serialport';
+import { Event } from '../../core/event';
 import { PyDeviceRuntimeInfo } from './py-device-runtime-info';
 
 export interface PythonDevice {
   device: string;
   baudrate: number;
-  readonly onDidReceiveData: vscode.Event<Buffer>;
-  readonly onDidDisconnect: vscode.Event<void>;
+  readonly onDidReceiveData: Event<Buffer>;
+  readonly onDidDisconnect: Event<void>;
   connect(serialPort: SerialPort): Promise<void>;
   disconnect(): Promise<void>;
   softReboot(timeoutMs?: number): Promise<void>;

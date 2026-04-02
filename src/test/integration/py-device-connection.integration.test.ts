@@ -3,7 +3,8 @@
  * Integration test: PyDeviceConnection serial open + raw REPL entry.
  *
  * Requires a MicroPython board connected on PYDEVICE_PORT (default /dev/ttyACM0).
- * Run as part of the normal `npm run test` suite inside the VS Code test harness.
+ * Run as a plain Node integration test via `npm run test:integration`
+ * (no VS Code launch required).
  *
  * Environment variable:
  *   PYDEVICE_PORT  – serial port path (default: /dev/ttyACM0)

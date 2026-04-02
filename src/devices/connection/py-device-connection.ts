@@ -2,16 +2,13 @@
  * Module overview:
  * Handles low-level serial transport interactions with Python devices.
  */
-import * as vscode from 'vscode';
 import { SerialPort } from 'serialport';
 import { StringDecoder } from 'string_decoder';
-import { outputChannelLogger } from '../../logging/output-channel';
-import { emitPyDeviceLoggerEvent } from '../../logging/pydevice-logger-events';
 import { pyDeviceInternalTimeouts, pyDeviceTimeoutSettings } from '../../constants/timeout-constants';
-import { getTimeoutSettingMs, resolveTimeoutMs } from '../../utils/timeout-settings';
-import { showErrorMessage } from '../../utils/i18n';
+import { Emitter } from '../../core/event';
 import { PyDeviceIOEvent } from './py-device-io-event';
 import { PyDeviceRuntimeInfo } from '../model/py-device-runtime-info';
+import { defaultPyDeviceHostServices, PyDeviceHostServices, resolveTimeoutMs } from './py-device-host-services';
 import {
   pyDeviceCommandSequences,
   pyDeviceControlChars,
@@ -31,30 +28,32 @@ export class PyDeviceConnection {
 
   useRawPaste: boolean = true;
   waitDelay: number = 100;
-  private ioEmitter = new vscode.EventEmitter<PyDeviceIOEvent>();
+  private ioEmitter = new Emitter<PyDeviceIOEvent>();
   readonly onDidIO = this.ioEmitter.event;
-  private readonly dataReceivedEmitter = new vscode.EventEmitter<Buffer>();
+  private readonly dataReceivedEmitter = new Emitter<Buffer>();
   readonly onDidReceiveData = this.dataReceivedEmitter.event;
-  private readonly disconnectedEmitter = new vscode.EventEmitter<void>();
+  private readonly disconnectedEmitter = new Emitter<void>();
   readonly onDidDisconnect = this.disconnectedEmitter.event;
   private execQueue: Promise<void> = Promise.resolve();
-  private static readonly transportLogSettingKey = 'verboseReplTransportLogs';
   private readonly reportErrorsToUser: boolean;
   private serialPortCloseHandler: (() => void) | undefined;
   private ownsSerialPort = false;
+  private readonly hostServices: PyDeviceHostServices;
 
   constructor(
     device: string,
     baudrate: number = 115200,
     reportErrorsToUser: boolean = true,
     user: string = 'micro',
-    password: string = 'python'
+    password: string = 'python',
+    hostServices: PyDeviceHostServices = defaultPyDeviceHostServices
   ) {
     this.device = device;
     this.baudrate = baudrate;
     this.user = user;
     this.password = password;
     this.reportErrorsToUser = reportErrorsToUser;
+    this.hostServices = hostServices;
   }
 
   async open(): Promise<void> {
@@ -179,7 +178,7 @@ export class PyDeviceConnection {
 
     const data = await this.readAllRaw();
     const str = String.fromCharCode(...data.filter((b) => b !== pyDeviceProtocolBytes.ctrlD));
-    outputChannelLogger.log(str, false);
+    this.hostServices.log(str, false);
 
     return true;
   }
@@ -211,7 +210,7 @@ export class PyDeviceConnection {
     await this.delay(this.waitDelay);
 
     const response2 = await this.readAllRaw();
-    outputChannelLogger.log(`Raw REPL fallback response: ${response2.join(',')}`, false);
+    this.hostServices.log(`Raw REPL fallback response: ${response2.join(',')}`, false);
 
     return true;
   }
@@ -283,7 +282,7 @@ export class PyDeviceConnection {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const writeAckTimeoutMs = getTimeoutSettingMs(pyDeviceTimeoutSettings.pythonSerialWriteAck);
+      const writeAckTimeoutMs = this.hostServices.getTimeoutSettingMs(pyDeviceTimeoutSettings.pythonSerialWriteAck);
       let settled = false;
       const settleReject = (error: Error): void => {
         if (settled) {
@@ -325,7 +324,7 @@ export class PyDeviceConnection {
   }
 
   async execRawCapture(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
-    const effectiveTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
+    const effectiveTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
     return this.enqueueExclusive(() => this.execRawCaptureUnlocked(command, effectiveTimeoutMs));
   }
 
@@ -335,7 +334,7 @@ export class PyDeviceConnection {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void
   ): Promise<{ stdout: string; stderr: string }> {
-    const effectiveTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
+    const effectiveTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
     return this.enqueueExclusive(() => this.execRawCaptureStreamingUnlocked(
       command,
       effectiveTimeoutMs,
@@ -354,7 +353,7 @@ export class PyDeviceConnection {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void
   ): Promise<{ stdout: string; stderr: string }> {
-    const effectiveTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
+    const effectiveTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
     this.assertPortOpen();
 
     await this.enterRawReplUnlocked(effectiveTimeoutMs);
@@ -375,8 +374,8 @@ export class PyDeviceConnection {
   }
 
   async getBoardRuntimeInfo(timeoutMs?: number): Promise<PyDeviceRuntimeInfo> {
-    const runtimeInfoTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonGetRuntimeInfo, timeoutMs);
-    const softRebootTimeoutMs = getTimeoutSettingMs(pyDeviceTimeoutSettings.pythonSoftReboot);
+    const runtimeInfoTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonGetRuntimeInfo, timeoutMs);
+    const softRebootTimeoutMs = this.hostServices.getTimeoutSettingMs(pyDeviceTimeoutSettings.pythonSoftReboot);
     return this.enqueueExclusive(async () => {
       await this.softRebootRawUnlocked(Math.max(runtimeInfoTimeoutMs, softRebootTimeoutMs));
       const { stdout, stderr } = await this.execRawCaptureUnlocked(`${this.buildRuntimeInfoScript()}\n`, runtimeInfoTimeoutMs);
@@ -387,10 +386,10 @@ export class PyDeviceConnection {
   }
 
   async probeBoardRuntimeInfo(timeoutMs?: number): Promise<PyDeviceRuntimeInfo> {
-    const probeRuntimeTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonProbeRuntimeInfo, timeoutMs);
+    const probeRuntimeTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonProbeRuntimeInfo, timeoutMs);
     return this.enqueueExclusive(async () => {
       const startedAt = Date.now();
-      emitPyDeviceLoggerEvent({
+      this.hostServices.emitLoggerEvent({
         source: 'ProbeDevices',
         level: 'debug',
         action: 'probe-runtime-script-started',
@@ -399,14 +398,14 @@ export class PyDeviceConnection {
       });
       const { stdout, stderr } = await this.execRawCaptureUnlocked(`${this.buildRuntimeInfoScript()}\n`, probeRuntimeTimeoutMs);
       const runtimeInfo = this.parseRuntimeInfo(stdout, stderr);
-      emitPyDeviceLoggerEvent({
+      this.hostServices.emitLoggerEvent({
         source: 'ProbeDevices',
         level: 'debug',
         action: 'probe-runtime-script-completed',
         message: `Runtime info script completed on ${this.device}.`,
         details: { portPath: this.device, elapsedMs: Date.now() - startedAt }
       });
-      emitPyDeviceLoggerEvent({
+      this.hostServices.emitLoggerEvent({
         source: 'ProbeDevices',
         level: 'debug',
         action: 'probe-uniqueid-started',
@@ -414,7 +413,7 @@ export class PyDeviceConnection {
         details: { portPath: this.device, timeoutMs: probeRuntimeTimeoutMs }
       });
       runtimeInfo.uniqueId = await this.tryReadBoardUniqueIdUnlocked(probeRuntimeTimeoutMs);
-      emitPyDeviceLoggerEvent({
+      this.hostServices.emitLoggerEvent({
         source: 'ProbeDevices',
         level: 'debug',
         action: 'probe-uniqueid-completed',
@@ -430,14 +429,14 @@ export class PyDeviceConnection {
   }
 
   async softReboot(timeoutMs?: number): Promise<void> {
-    const softRebootTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonSoftReboot, timeoutMs);
+    const softRebootTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonSoftReboot, timeoutMs);
     return this.enqueueExclusive(async () => {
       await this.softRebootRawUnlocked(Math.max(softRebootTimeoutMs, pyDeviceTimeoutSettings.pythonSoftReboot.minimumValueMs));
     });
   }
 
   async hardReboot(timeoutMs?: number): Promise<void> {
-    const hardRebootTimeoutMs = resolveTimeoutMs(pyDeviceTimeoutSettings.pythonHardReboot, timeoutMs);
+    const hardRebootTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonHardReboot, timeoutMs);
     if (!this.serialPort) {
       throw new Error('The serial port must be open to call this method');
     }
@@ -929,9 +928,9 @@ export class PyDeviceConnection {
     const detail = error instanceof Error ? error.message : String(error);
     const message = `${context}: ${detail}`;
     if (this.reportErrorsToUser && this.shouldSurfaceErrorToUser(message)) {
-      showErrorMessage(message);
+      this.hostServices.showErrorMessage(message);
     }
-    outputChannelLogger.log(message, true);
+    this.hostServices.log(message, true);
     return new Error(message);
   }
 
@@ -955,14 +954,12 @@ export class PyDeviceConnection {
     }
     console.debug(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`);
     if (this.isTransportLoggingEnabled()) {
-      outputChannelLogger.log(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`, false);
+      this.hostServices.log(`[REPL ${direction.toUpperCase()}] ${this.formatBytesForLog(data)}`, false);
     }
   }
 
   private isTransportLoggingEnabled(): boolean {
-    return vscode.workspace
-      .getConfiguration('mekatrol.pydevice')
-      .get<boolean>(PyDeviceConnection.transportLogSettingKey, false);
+    return this.hostServices.isTransportLoggingEnabled();
   }
 
   private formatBytesForLog(data: Buffer): string {

@@ -7,6 +7,7 @@ import { MicroPythonDevice } from '../py-device';
 import { PortInfo } from '../../utils/serial-port';
 import { DeviceSerialPort } from '../connection/device-serial-port';
 import { ProbedSerialDevice } from './probed-serial-device';
+import { createVscodePyDeviceHostServices } from '../connection/py-device-vscode-host-services';
 
 /**
  * Small adapter around Python-device probing so command code remains focused on UI
@@ -20,7 +21,14 @@ export class SerialDeviceProber {
       port.path,
       this.baudRate,
       false,
-      (devicePath, baudRate) => new MicroPythonDevice(devicePath, baudRate, false)
+      (devicePath, baudRate) => new MicroPythonDevice(
+        devicePath,
+        baudRate,
+        false,
+        'micro',
+        'python',
+        createVscodePyDeviceHostServices()
+      )
     );
     const probeResult = await serialPort.probeRuntimeInfoDetailed();
     return {

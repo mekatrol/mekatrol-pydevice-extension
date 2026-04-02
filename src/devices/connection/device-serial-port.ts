@@ -9,6 +9,7 @@ import { PyDeviceTransport } from './py-device-transport';
 import { emitPyDeviceLoggerEvent } from '../../logging/pydevice-logger-events';
 import { pyDeviceTimeoutSettings } from '../../constants/timeout-constants';
 import { getTimeoutSettingMs, resolveTimeoutMs } from '../../utils/timeout-settings';
+import { createVscodePyDeviceHostServices } from './py-device-vscode-host-services';
 
 const withTimeout = async <T>(operation: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
   return await new Promise<T>((resolve, reject) => {
@@ -45,7 +46,14 @@ type ProbeRuntimeInfoResult = {
 };
 
 const defaultTransportFactory = (devicePath: string, baudRate: number, reportErrorsToUser: boolean): PyDeviceTransport => {
-  return new MicroPythonDevice(devicePath, baudRate, reportErrorsToUser);
+  return new MicroPythonDevice(
+    devicePath,
+    baudRate,
+    reportErrorsToUser,
+    'micro',
+    'python',
+    createVscodePyDeviceHostServices()
+  );
 };
 
 export type { Disposable, PyDeviceTransport };
