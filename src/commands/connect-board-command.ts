@@ -785,7 +785,7 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
     }
 
     if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-      const workspaceWarning = 'No workspace folder is open. Device can connect, but it will not appear in PyDevice Explorer until you open a workspace folder.';
+      const workspaceWarning = 'No workspace folder is open. Device can connect, but workspace-backed PyDevice features remain unavailable until you open a workspace folder.';
       showWarningMessage(workspaceWarning);
       outputChannelLogger.log(workspaceWarning, true);
     }

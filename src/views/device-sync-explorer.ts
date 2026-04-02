@@ -6784,6 +6784,10 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
       return undefined;
     };
 
+    if (!treeView) {
+      return;
+    }
+
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const node = findNodeByData(target.side, target.relativePath, target.deviceId);
       if (node) {
@@ -6878,38 +6882,43 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   // Register critical explorer setup commands before risky view/provider setup.
   context.subscriptions.push(vscode.commands.registerCommand(commandExplorerPrerequisitesHintId, showExplorerPrerequisitesHint));
   context.subscriptions.push(vscode.commands.registerCommand(commandExplorerInitialiseWorkspaceId, initialiseWorkspace));
+  context.subscriptions.push(vscode.workspace.registerFileSystemProvider(deviceDocumentScheme, deviceFsProvider, { isCaseSensitive: true }));
 
   const provider = new SyncTreeProvider(model);
-
   context.subscriptions.push(provider);
-  const dragAndDropController = new SyncTreeDragAndDropController(model);
-  context.subscriptions.push(dragAndDropController);
-  const treeView = vscode.window.createTreeView(syncViewId, {
-    treeDataProvider: provider,
-    dragAndDropController
-  });
-  context.subscriptions.push(treeView);
-  context.subscriptions.push(vscode.workspace.registerFileSystemProvider(deviceDocumentScheme, deviceFsProvider, { isCaseSensitive: true }));
+  const hasSyncExplorerView = false;
+  let treeView: vscode.TreeView<SyncNode> | undefined;
+  if (hasSyncExplorerView) {
+    const dragAndDropController = new SyncTreeDragAndDropController(model);
+    context.subscriptions.push(dragAndDropController);
+    treeView = vscode.window.createTreeView(syncViewId, {
+      treeDataProvider: provider,
+      dragAndDropController
+    });
+    context.subscriptions.push(treeView);
+  }
   if (fileWatcher) {
     context.subscriptions.push(fileWatcher.addDeviceEventSource(deviceFsProvider.onDidChangeFile));
     context.subscriptions.push(fileWatcher.subscribe((event) => void model.handleFileWatcherEvent(event)));
   }
 
-  context.subscriptions.push(treeView.onDidChangeSelection(async (event) => {
-    const node = event.selection[0];
-    model.setSelectedDeviceNode(node);
-  }));
+  if (treeView) {
+    context.subscriptions.push(treeView.onDidChangeSelection(async (event) => {
+      const node = event.selection[0];
+      model.setSelectedDeviceNode(node);
+    }));
 
-  context.subscriptions.push(treeView.onDidChangeVisibility((event) => {
-    if (!event.visible || !model.isBoardConnected()) {
-      return;
-    }
+    context.subscriptions.push(treeView.onDidChangeVisibility((event) => {
+      if (!event.visible || !model.isBoardConnected()) {
+        return;
+      }
 
-    void model.refresh(false, false);
-  }));
+      void model.refresh(false, false);
+    }));
+  }
 
   const deviceExplorerAutoRefreshTimer = setInterval(() => {
-    if (!treeView.visible || !model.isBoardConnected()) {
+    if (!treeView?.visible || !model.isBoardConnected()) {
       return;
     }
 
@@ -6970,6 +6979,10 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   };
 
   const revealConnectedDeviceNode = async (deviceId: string): Promise<void> => {
+    if (!treeView) {
+      return;
+    }
+
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const deviceRootNode = findTreeNode((node) => node.data.side === 'device' && !!node.data.isRoot);
       if (deviceRootNode) {
@@ -7037,5 +7050,4 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     }
   }));
   await model.refresh(true, true);
-  void vscode.commands.executeCommand(`${syncViewId}.focus`);
 };

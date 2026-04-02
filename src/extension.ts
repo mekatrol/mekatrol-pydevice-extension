@@ -137,7 +137,6 @@ export const activate = async (context: vscode.ExtensionContext) => {
     initDeviceMirrorDecorations(context);
   });
 
-  // Init device sync explorer
   await runInit('initDeviceSyncExplorer', () => initDeviceSyncExplorer(context, fileWatcher));
 
   // Init Run/Debug integration
