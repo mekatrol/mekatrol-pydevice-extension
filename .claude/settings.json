@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /home/dad/repos/mekatrol-pydevice-extension/src/**/*.ts)"
+    ]
+  }
+}
