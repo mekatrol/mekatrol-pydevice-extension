@@ -8,7 +8,14 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { closeAllConnectedPyDevices, getConnectedPyDevice, getConnectedPyDevices, onBoardConnectionStateChanged, onBoardConnectionsChanged } from '../commands/connect-board-command';
+import {
+  closeAllConnectedPyDevices,
+  getConnectedPyDevice,
+  getConnectedPyDevices,
+  onBoardConnectionStateChanged,
+  onBoardConnectionsChanged,
+  pickSerialPortToConnect
+} from '../commands/connect-board-command';
 import { outputChannelLogger } from '../logging/output-channel';
 import {
   createDefaultConfiguration,
@@ -2240,8 +2247,22 @@ class DeviceSyncModel {
       }
       if (typed.type === 'connect') {
         void (async () => {
-          await vscode.commands.executeCommand(commandConnectBoardWithPickerId);
-          await refreshPanel();
+          await panel.webview.postMessage({ type: 'connectState', disabled: true, busy: false });
+          try {
+            const devicePath = await pickSerialPortToConnect(true, false);
+            if (!devicePath) {
+              return;
+            }
+
+            await panel.webview.postMessage({ type: 'connectState', disabled: true, busy: true });
+            await vscode.commands.executeCommand('mekatrol.pydevice.connectboard', {
+              forcePickPort: false,
+              devicePath
+            });
+            await refreshPanel();
+          } finally {
+            await panel.webview.postMessage({ type: 'connectState', disabled: false, busy: false });
+          }
         })();
         return;
       }
@@ -5797,6 +5818,7 @@ class DeviceSyncModel {
         refresh: 'Refresh',
         setDeviceName: 'Set device name',
         connect: 'Connect',
+        connecting: 'Connecting...',
         disconnect: 'Disconnect',
         connection: 'Connection',
         mappings: 'Device Folder Mapping',

@@ -172,7 +172,6 @@ const readBoardRuntimeInfoWithRetries = async (
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
   const message = `Connected, but failed to read board runtime info for ${devicePath} after ${attempts} attempt(s): ${reason}`;
   outputChannelLogger.log(message, true);
-  void showWarningMessage(message);
   return undefined;
 };
 
@@ -211,9 +210,11 @@ const readBoardRuntimeInfoWithRecovery = async (
   const reason = lastError instanceof Error ? lastError.message : String(lastError);
   const message = `Recovery connect: failed to read board runtime info for ${devicePath} after ${runtimeInfoRecoveryProbeAttempts + runtimeInfoRecoveryRebootAttempts} attempt(s): ${reason}`;
   outputChannelLogger.log(message, true);
-  void showWarningMessage(message);
   return undefined;
 };
+
+const getUnresponsiveDeviceMessage = (devicePath: string): string =>
+  `PyDevice on ${devicePath} is not responding. Unplug the device and plug it in again, then reconnect.`;
 
 const parseDeviceIdFromDeviceUri = (uri: vscode.Uri): string | undefined => {
   if (uri.scheme !== deviceDocumentScheme) {
@@ -438,111 +439,116 @@ const connectBoardForPath = async (
   // notification sent when the host opens the port.
   await wait(500);
 
-  const runtimeInfo = recoveryMode
-    ? await readBoardRuntimeInfoWithRecovery(board, devicePath)
-    : await readBoardRuntimeInfoWithRetries(
-      board,
-      devicePath,
-      runtimeInfoConnectRetryAttempts,
-      runtimeInfoConnectRetryDelayMs
-    );
+  let connected = false;
+  try {
+    const runtimeInfo = recoveryMode
+      ? await readBoardRuntimeInfoWithRecovery(board, devicePath)
+      : await readBoardRuntimeInfoWithRetries(
+        board,
+        devicePath,
+        runtimeInfoConnectRetryAttempts,
+        runtimeInfoConnectRetryDelayMs
+      );
 
-  const deviceId = toDeviceId(devicePath, runtimeInfo);
-  if (boardRegistry.hasDeviceId(deviceId)) {
-    await board.close();
-    throw new Error(`A board with device ID ${deviceId} is already connected.`);
-  }
-
-  const state: ConnectedPyDeviceState = {
-    deviceId,
-    board,
-    runtimeInfo,
-    executionCount: 0
-  };
-
-  boardRegistry.add(state);
-  await reconnectStateStore.addReconnectDevicePath(board.device);
-  notifyStateChanged();
-
-  const startMirrorSync = (deviceId: string): void => {
-    void syncDeviceToMirror(board, deviceId)
-      .then(() => outputChannelLogger.log(`Device mirror synced for ${deviceId}.`, false))
-      .catch((error: unknown) => {
-        const reason = error instanceof Error ? error.message : String(error);
-        outputChannelLogger.log(`Device mirror sync failed for ${deviceId}: ${reason}`, true);
-      });
-  };
-
-  // Only sync the mirror when we have a real device identity. If runtime info was
-  // not available the deviceId is a port-path fallback (port_*), and creating a
-  // mirror directory under that name would leave stale junk if the board later
-  // identifies itself with a proper ID.
-  if (runtimeInfo) {
-    startMirrorSync(state.deviceId);
-  }
-
-  const applyRefreshedRuntimeInfo = async (refreshedRuntimeInfo: PyDeviceRuntimeInfo): Promise<void> => {
-    const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
-    if (!currentState || currentState !== state) {
-      return;
-    }
-
-    const previousDeviceId = state.deviceId;
-    boardRegistry.setRuntimeInfo(previousDeviceId, refreshedRuntimeInfo);
-    const promotedDeviceId = toDeviceId(state.board.device, refreshedRuntimeInfo);
-    if (promotedDeviceId !== previousDeviceId) {
-      if (boardRegistry.hasDeviceId(promotedDeviceId)) {
-        outputChannelLogger.log(
-          `Runtime info discovered new device ID ${promotedDeviceId} for ${state.board.device}, but it is already connected.`,
-          true
-        );
-      } else if (boardRegistry.reassignDeviceId(previousDeviceId, promotedDeviceId)) {
-        outputChannelLogger.log(`Promoted device ID for ${state.board.device}: ${previousDeviceId} -> ${promotedDeviceId}.`, false);
-      }
-    }
-
-    // If mirror sync was deferred because runtime info was absent at connect time,
-    // start it now that we have a confirmed device identity.
     if (!runtimeInfo) {
-      startMirrorSync(state.deviceId);
+      const message = getUnresponsiveDeviceMessage(devicePath);
+      if (showMessages) {
+        showErrorMessage(message);
+      }
+      throw new Error(message);
     }
 
+    const deviceId = toDeviceId(devicePath, runtimeInfo);
+    if (boardRegistry.hasDeviceId(deviceId)) {
+      throw new Error(`A board with device ID ${deviceId} is already connected.`);
+    }
+
+    const state: ConnectedPyDeviceState = {
+      deviceId,
+      board,
+      runtimeInfo,
+      executionCount: 0
+    };
+
+    boardRegistry.add(state);
+    connected = true;
+    await reconnectStateStore.addReconnectDevicePath(board.device);
     notifyStateChanged();
-  };
 
-  const needsRuntimeInfoRefresh = !runtimeInfo;
-  const needsIdentityPromotion = state.deviceId.startsWith('port_');
-  if (needsRuntimeInfoRefresh || needsIdentityPromotion) {
-    void (async () => {
-      let lastError: unknown;
-      for (let attempt = 1; attempt <= runtimeInfoBackgroundRetryAttempts; attempt += 1) {
-        await wait(runtimeInfoBackgroundRetryDelayMs);
+    const startMirrorSync = (deviceId: string): void => {
+      void syncDeviceToMirror(board, deviceId)
+        .then(() => outputChannelLogger.log(`Device mirror synced for ${deviceId}.`, false))
+        .catch((error: unknown) => {
+          const reason = error instanceof Error ? error.message : String(error);
+          outputChannelLogger.log(`Device mirror sync failed for ${deviceId}: ${reason}`, true);
+        });
+    };
 
-        const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
-        if (!currentState || currentState !== state) {
-          return;
-        }
+    startMirrorSync(state.deviceId);
 
-        try {
-          const refreshedRuntimeInfo = await state.board.getDeviceInfo();
-          await applyRefreshedRuntimeInfo(refreshedRuntimeInfo);
-          outputChannelLogger.log(`Runtime info refreshed for ${state.deviceId} on attempt ${attempt}.`, false);
-          return;
-        } catch (error) {
-          lastError = error;
+    const applyRefreshedRuntimeInfo = async (refreshedRuntimeInfo: PyDeviceRuntimeInfo): Promise<void> => {
+      const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
+      if (!currentState || currentState !== state) {
+        return;
+      }
+
+      const previousDeviceId = state.deviceId;
+      boardRegistry.setRuntimeInfo(previousDeviceId, refreshedRuntimeInfo);
+      const promotedDeviceId = toDeviceId(state.board.device, refreshedRuntimeInfo);
+      if (promotedDeviceId !== previousDeviceId) {
+        if (boardRegistry.hasDeviceId(promotedDeviceId)) {
+          outputChannelLogger.log(
+            `Runtime info discovered new device ID ${promotedDeviceId} for ${state.board.device}, but it is already connected.`,
+            true
+          );
+        } else if (boardRegistry.reassignDeviceId(previousDeviceId, promotedDeviceId)) {
+          outputChannelLogger.log(`Promoted device ID for ${state.board.device}: ${previousDeviceId} -> ${promotedDeviceId}.`, false);
         }
       }
 
-      if (needsRuntimeInfoRefresh) {
+      notifyStateChanged();
+    };
+
+    const needsIdentityPromotion = state.deviceId.startsWith('port_');
+    if (needsIdentityPromotion) {
+      void (async () => {
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= runtimeInfoBackgroundRetryAttempts; attempt += 1) {
+          await wait(runtimeInfoBackgroundRetryDelayMs);
+
+          const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
+          if (!currentState || currentState !== state) {
+            return;
+          }
+
+          try {
+            const refreshedRuntimeInfo = await state.board.getDeviceInfo();
+            await applyRefreshedRuntimeInfo(refreshedRuntimeInfo);
+            outputChannelLogger.log(`Runtime info refreshed for ${state.deviceId} on attempt ${attempt}.`, false);
+            return;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
         const reason = lastError instanceof Error ? lastError.message : String(lastError);
-        const message = `Runtime info remained unavailable for ${state.deviceId} after ${runtimeInfoBackgroundRetryAttempts} background attempt(s): ${reason}`;
+        const message = `Runtime info refresh failed for ${state.deviceId} after ${runtimeInfoBackgroundRetryAttempts} background attempt(s): ${reason}`;
         outputChannelLogger.log(message, true);
-        void showWarningMessage(message);
-      }
-    })();
-  }
+      })();
+    }
 
-  return state;
+    return state;
+  } catch (error) {
+    if (!connected) {
+      try {
+        await board.close();
+      } catch (closeError) {
+        const closeReason = closeError instanceof Error ? closeError.message : String(closeError);
+        outputChannelLogger.log(`Failed to close serial port after connect failure on ${devicePath}. ${closeReason}`, true);
+      }
+    }
+    throw error;
+  }
 };
 
 export const closeConnectedPyDeviceByDeviceId = async (
@@ -698,7 +704,7 @@ const pickConnectedDeviceId = async (placeHolder: string): Promise<string | unde
   return selected?.label;
 };
 
-const pickSerialPortToConnect = async (
+export const pickSerialPortToConnect = async (
   onlyUnconnected: boolean = false,
   recoveryMode: boolean = false
 ): Promise<string | undefined> => {
@@ -809,6 +815,10 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      if (reason === getUnresponsiveDeviceMessage(devicePath)) {
+        outputChannelLogger.log(reason, true);
+        return;
+      }
       const msg = `Failed to connect to board on ${devicePath} @ ${baudRate}${recoveryMode ? ' (recovery mode)' : ''}. ${reason}`;
       showErrorMessage(msg);
       outputChannelLogger.log(msg, true);

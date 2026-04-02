@@ -10,6 +10,8 @@ try {
 const data = initialState.data && typeof initialState.data === 'object' ? initialState.data : {};
 const i18n = initialState.i18n && typeof initialState.i18n === 'object' ? initialState.i18n : {};
 const msg = (key, fallback) => (typeof i18n[key] === 'string' ? i18n[key] : fallback);
+let connectBusy = false;
+let connectDisabled = false;
 
 const setText = (id, value) => {
   const element = document.getElementById(id);
@@ -22,6 +24,7 @@ setText('displayName', data.displayName || '');
 setText('deviceId', data.deviceId || '');
 setText('setDeviceName', msg('setDeviceName', 'Set device name'));
 setText('connect', msg('connect', 'Connect'));
+setText('connectBusyText', msg('connecting', 'Connecting...'));
 setText('disconnect', msg('disconnect', 'Disconnect'));
 setText('refresh', msg('refresh', 'Refresh'));
 setText('connectionTitle', msg('connection', 'Connection'));
@@ -61,6 +64,16 @@ if (connectionStatusElement) {
 }
 
 const connectButton = document.getElementById('connect');
+const connectBusyOverlay = document.getElementById('connectBusyOverlay');
+const updateConnectBusyState = () => {
+  if (connectButton) {
+    connectButton.disabled = connectDisabled || connectBusy;
+  }
+  if (connectBusyOverlay) {
+    connectBusyOverlay.classList.toggle('hidden', !connectBusy);
+  }
+};
+
 if (connectButton) {
   connectButton.style.display = data.connected ? 'none' : 'inline-block';
 }
@@ -121,6 +134,11 @@ if (rowsBody) {
 }
 
 document.getElementById('connect')?.addEventListener('click', () => {
+  if (connectDisabled || connectBusy) {
+    return;
+  }
+  connectDisabled = true;
+  updateConnectBusyState();
   vscode.postMessage({ type: 'connect' });
 });
 
@@ -135,3 +153,26 @@ document.getElementById('setDeviceName')?.addEventListener('click', () => {
 document.getElementById('refresh')?.addEventListener('click', () => {
   vscode.postMessage({ type: 'refresh' });
 });
+
+window.addEventListener('message', (event) => {
+  const message = event.data;
+  if (!message || typeof message !== 'object') {
+    return;
+  }
+  if (message.type === 'connectState') {
+    if (typeof message.disabled === 'boolean') {
+      connectDisabled = message.disabled;
+    }
+    if (typeof message.busy === 'boolean') {
+      connectBusy = message.busy;
+    }
+    updateConnectBusyState();
+    return;
+  }
+  if (message.type === 'connectBusy' && typeof message.busy === 'boolean') {
+    connectBusy = message.busy;
+    updateConnectBusyState();
+  }
+});
+
+updateConnectBusyState();
