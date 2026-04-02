@@ -85,6 +85,7 @@ const hasHostSyncChildFoldersContextKey = 'mekatrol.pydevice.hasHostSyncChildFol
 const hasMappedHostMappingsContextKey = 'mekatrol.pydevice.hasMappedHostMappings';
 const mappedDeviceIdsContextKey = 'mekatrol.pydevice.mappedDeviceIds';
 const connectedDeviceIdsContextKey = 'mekatrol.pydevice.connectedDeviceIds';
+const deviceIdsWithLibrariesContextKey = 'mekatrol.pydevice.deviceIdsWithLibraries';
 const explorerHasWorkspaceContextKey = 'mekatrol.pydevice.explorerHasWorkspace';
 const explorerHasConfigurationContextKey = 'mekatrol.pydevice.explorerHasConfiguration';
 const explorerHasSyncFolderContextKey = 'mekatrol.pydevice.explorerHasSyncFolder';
@@ -250,6 +251,7 @@ class DeviceSyncModel {
     await vscode.commands.executeCommand('setContext', hasMappedHostMappingsContextKey, Object.keys(this.deviceHostFolderMappings).length > 0);
     await vscode.commands.executeCommand('setContext', mappedDeviceIdsContextKey, this.getMappedHostDeviceIds());
     await vscode.commands.executeCommand('setContext', connectedDeviceIdsContextKey, this.getConnectedDeviceIds());
+    await vscode.commands.executeCommand('setContext', deviceIdsWithLibrariesContextKey, this.getDeviceIdsWithLibraries());
   }
 
   private logSyncEvent(action: string, message: string, details?: Record<string, unknown>): void {
@@ -3863,6 +3865,13 @@ class DeviceSyncModel {
     return Object.keys(this.deviceHostFolderMappings).sort((a, b) => a.localeCompare(b));
   }
 
+  getDeviceIdsWithLibraries(): string[] {
+    return Object.entries(this.deviceLibraryFolderMappings)
+      .filter(([, folders]) => Array.isArray(folders) && folders.length > 0)
+      .map(([deviceId]) => deviceId)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   getMappedHostFolderCount(): number {
     return new Set(
       Object.values(this.deviceHostFolderMappings)
@@ -4430,8 +4439,8 @@ class DeviceSyncModel {
     await this.refresh(true, false);
   }
 
-  async addDeviceLibraryFolder(node?: SyncNode): Promise<void> {
-    let deviceId = await this.ensureActiveDevice(node);
+  async addDeviceLibraryFolder(target?: DeviceTarget): Promise<void> {
+    let deviceId = await this.ensureActiveDevice(target);
     if (!deviceId) {
       deviceId = await this.pickKnownDeviceId('Select device to add a library for');
       if (deviceId) {
@@ -4476,8 +4485,8 @@ class DeviceSyncModel {
     await this.refresh(true, false);
   }
 
-  async removeDeviceLibraryFolder(node?: SyncNode): Promise<void> {
-    let deviceId = await this.ensureActiveDevice(node);
+  async removeDeviceLibraryFolder(target?: DeviceTarget): Promise<void> {
+    let deviceId = await this.ensureActiveDevice(target);
     if (!deviceId) {
       deviceId = await this.pickKnownDeviceId('Select device to remove a library from');
       if (deviceId) {
@@ -4495,8 +4504,8 @@ class DeviceSyncModel {
       return;
     }
 
-    const selectedLibrary = node?.data.libraryHostFolder
-      ? toRelativePath(node.data.libraryHostFolder)
+    const selectedLibrary = target instanceof SyncNode && target.data.libraryHostFolder
+      ? toRelativePath(target.data.libraryHostFolder)
       : undefined;
     let libraryToRemove = selectedLibrary;
     if (!libraryToRemove) {

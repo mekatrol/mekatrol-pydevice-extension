@@ -472,6 +472,16 @@
           "command": "mekatrol.pydevice.setdevicename",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
           "group": "pydevice@7"
+        },
+        {
+          "command": "mekatrol.pydevice.adddevicelibraryfolder",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
+          "group": "pydevice@8"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicelibraryfolder",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.deviceIdsWithLibraries",
+          "group": "pydevice@9"
         }
       ],
       "view/item/context": [
@@ -534,16 +544,6 @@
           "command": "mekatrol.pydevice.deletesyncpath",
           "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded || viewItem == pydevice.hostFolder || viewItem == pydevice.hostFolderExcluded || viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded)",
           "group": "navigation@9"
-        },
-        {
-          "command": "mekatrol.pydevice.adddevicelibraryfolder",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
-          "group": "navigation@11.2"
-        },
-        {
-          "command": "mekatrol.pydevice.removedevicelibraryfolder",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.deviceLibraryNode || viewItem == pydevice.deviceLibraryNodeMissing || viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
-          "group": "navigation@11.3"
         }
       ]
     },
