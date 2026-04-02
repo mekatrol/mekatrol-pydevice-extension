@@ -19,6 +19,7 @@ import {
   tryReconnectBoardOnStartup
 } from './commands/connect-board-command';
 import { initDeviceSyncExplorer } from './views/device-sync-explorer';
+import { initDeviceMirrorDecorations } from './views/device-mirror-decorations';
 import { initPyDeviceDebug } from './debug/py-device-debug';
 import { initReplView } from './views/repl-view';
 import { getWorkspaceCacheValue, initialiseWorkspaceCache, loggerAutoStartCacheKey, setWorkspaceCacheValue } from './utils/workspace-cache';
@@ -131,6 +132,9 @@ export const activate = async (context: vscode.ExtensionContext) => {
   await runInit('tryReconnectBoardOnStartup', () => tryReconnectBoardOnStartup(context));
   await runInit('initialisePyDeviceController', async () => {
     await initialisePyDeviceController();
+  });
+  await runInit('initDeviceMirrorDecorations', () => {
+    initDeviceMirrorDecorations(context);
   });
 
   // Init device sync explorer
