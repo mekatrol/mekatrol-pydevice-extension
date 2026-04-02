@@ -130,6 +130,11 @@
         "icon": "$(list-selection)"
       },
       {
+        "command": "mekatrol.pydevice.viewdeviceinfo",
+        "title": "View device info",
+        "icon": "$(info)"
+      },
+      {
         "command": "mekatrol.pydevice.openrepl",
         "title": "Open REPL console"
       },
@@ -441,6 +446,11 @@
           "command": "mekatrol.pydevice.autodetectdevices",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
           "group": "pydevice@10"
+        },
+        {
+          "command": "mekatrol.pydevice.viewdeviceinfo",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
+          "group": "pydevice@11"
         }
       ]
     },

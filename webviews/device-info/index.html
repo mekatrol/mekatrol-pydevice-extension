@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src __CSP_SOURCE__; script-src 'nonce-__NONCE__';">
+  <title>__TITLE__</title>
+  <link rel="stylesheet" href="__CSS_URI__">
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1 id="displayName"></h1>
+        <div id="deviceId" class="subtle"></div>
+      </div>
+      <div class="actions">
+        <button id="refresh" type="button"></button>
+        <button id="setDeviceName" type="button"></button>
+        <button id="connect" type="button"></button>
+        <button id="disconnect" type="button"></button>
+      </div>
+    </div>
+
+    <section class="card section-gap">
+      <h2 id="runtimeTitle"></h2>
+      <dl>
+        <dt id="versionLabel"></dt>
+        <dd id="versionValue"></dd>
+        <dt id="machineLabel"></dt>
+        <dd id="machineValue"></dd>
+        <dt id="uniqueIdLabel"></dt>
+        <dd><code id="uniqueIdValue"></code></dd>
+        <dt id="bannerLabel"></dt>
+        <dd>
+          <pre id="bannerValue"></pre>
+        </dd>
+      </dl>
+    </section>
+
+    <section class="card section-gap">
+      <h2 id="connectionTitle"></h2>
+      <dl>
+        <dt id="statusLabel"></dt>
+        <dd><span id="connectionStatus" class="pill"></span></dd>
+        <dt id="serialPortLabel"></dt>
+        <dd><code id="serialPortValue"></code></dd>
+        <dt id="baudRateLabel"></dt>
+        <dd id="baudRateValue"></dd>
+      </dl>
+    </section>
+
+    <section class="card section-gap">
+      <h2 id="mappingsTitle"></h2>
+      <dl>
+        <dt id="folderLabel"></dt>
+        <dd><code id="mappedFolderValue"></code></dd>
+        <dt id="folderStatusLabel"></dt>
+        <dd><span id="mappedFolderStatus" class="pill"></span></dd>
+      </dl>
+      <div class="gap"></div>
+      <h2 id="librariesTitle"></h2>
+      <table>
+        <thead>
+          <tr>
+            <th id="computerFolderLabel"></th>
+            <th id="deviceFolderLabel"></th>
+            <th id="libraryStatusLabel"></th>
+          </tr>
+        </thead>
+        <tbody id="libraryRows"></tbody>
+      </table>
+    </section>
+  </div>
+  <script id="initial-state" type="application/json">__INITIAL_STATE__</script>
+  <script nonce="__NONCE__" src="__SCRIPT_URI__"></script>
+</body>
+
+</html>

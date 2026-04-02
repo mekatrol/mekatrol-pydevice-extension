@@ -61,6 +61,7 @@ const commandOpenComputerItemFromTreeId = 'mekatrol.pydevice._opencomputersyncit
 const commandOpenDeviceFileFromTreeId = 'mekatrol.pydevice._opendevicefilefromtree';
 const commandSyncFileWithComputerId = 'mekatrol.pydevice.syncfilewithcomputer';
 const commandOpenSyncFilesId = 'mekatrol.pydevice.opensyncfiles';
+const commandViewDeviceInfoId = 'mekatrol.pydevice.viewdeviceinfo';
 const commandCreateSyncFileId = 'mekatrol.pydevice.createsyncfile';
 const commandCreateSyncFolderId = 'mekatrol.pydevice.createsyncfolder';
 const commandRenameSyncPathId = 'mekatrol.pydevice.renamesyncpath';
@@ -117,6 +118,25 @@ interface DeviceLibraryMapping {
   hostAbsolutePath: string;
   devicePath: string;
   missing: boolean;
+}
+
+interface DeviceInfoPanelData {
+  deviceId: string;
+  displayName: string;
+  connected: boolean;
+  connectionStatus: string;
+  serialPort: string;
+  baudRate: string;
+  mappedFolder: string;
+  mappedFolderStatus: string;
+  mappedFolderMissing: boolean;
+  libraries: DeviceLibraryMapping[];
+  runtimeInfo: {
+    version: string;
+    machine: string;
+    uniqueId: string;
+    banner: string;
+  };
 }
 
 type SyncAction = 'create' | 'modify' | 'delete';
@@ -2165,6 +2185,91 @@ class DeviceSyncModel {
     });
   }
 
+  async viewDeviceInfo(target?: DeviceTarget): Promise<void> {
+    const deviceId = await this.ensureActiveDevice(target);
+    if (!deviceId) {
+      showWarningMessage('Select a device before viewing device info.');
+      return;
+    }
+
+    await this.refresh(false, false);
+
+    const panel = vscode.window.createWebviewPanel(
+      'pydevice.deviceInfo',
+      '',
+      { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
+      {
+        enableScripts: true,
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webviews')
+        ]
+      }
+    );
+
+    const render = async (): Promise<void> => {
+      const data = await this.buildDeviceInfoPanelData(deviceId);
+      panel.title = `Device Info: ${data.displayName}`;
+      panel.webview.html = this.renderDeviceInfoHtml(panel.webview, data);
+    };
+
+    const refreshPanel = async (): Promise<void> => {
+      await this.refresh(false, false);
+      await render();
+    };
+
+    const connectionDisposable = onBoardConnectionsChanged(() => {
+      void refreshPanel();
+    });
+    const configDisposable = onPyDeviceConfigurationUpdated(() => {
+      void refreshPanel();
+    });
+    const saveDisposable = vscode.workspace.onDidSaveTextDocument((document) => {
+      const relativePath = toRelativePath(vscode.workspace.asRelativePath(document.uri, false));
+      if (relativePath === configurationFileName) {
+        void refreshPanel();
+      }
+    });
+    const messageDisposable = panel.webview.onDidReceiveMessage((message: unknown) => {
+      if (!message || typeof message !== 'object') {
+        return;
+      }
+      const typed = message as { type?: string };
+      if (typed.type === 'refresh') {
+        void refreshPanel();
+        return;
+      }
+      if (typed.type === 'connect') {
+        void (async () => {
+          await vscode.commands.executeCommand(commandConnectBoardWithPickerId);
+          await refreshPanel();
+        })();
+        return;
+      }
+      if (typed.type === 'disconnect') {
+        void (async () => {
+          await this.closeDeviceConnection(vscode.Uri.file(path.join(this.workspaceFolder?.uri.fsPath ?? '', deviceMirrorDirectoryName, deviceId)));
+          await refreshPanel();
+        })();
+        return;
+      }
+      if (typed.type === 'set_device_name') {
+        void (async () => {
+          await this.setDeviceName(vscode.Uri.file(path.join(this.workspaceFolder?.uri.fsPath ?? '', deviceMirrorDirectoryName, deviceId)));
+          await refreshPanel();
+        })();
+      }
+    });
+
+    panel.onDidDispose(() => {
+      connectionDisposable.dispose();
+      configDisposable.dispose();
+      saveDisposable.dispose();
+      messageDisposable.dispose();
+    });
+
+    await render();
+  }
+
   async createDeviceFile(node?: SyncNode): Promise<void> {
     await this.ensureActiveDevice(node);
     const deviceId = this.activeDeviceId;
@@ -2511,6 +2616,52 @@ class DeviceSyncModel {
       .replace(/>/g, '&gt;')
       .replace(/\"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  private async buildDeviceInfoPanelData(deviceId: string): Promise<DeviceInfoPanelData> {
+    const connected = this.getConnectedDevice(deviceId);
+    const runtimeInfo = connected?.runtimeInfo;
+    const mappedFolder = this.getMappedHostFolder(deviceId);
+    let mappedFolderStatus = 'Not mapped';
+    let mappedFolderMissing = true;
+    if (mappedFolder) {
+      mappedFolderStatus = 'Exists';
+      mappedFolderMissing = false;
+      const absolutePath = this.resolveWorkspaceRelativePath(mappedFolder);
+      if (!absolutePath) {
+        mappedFolderStatus = 'Missing on computer';
+        mappedFolderMissing = true;
+      } else {
+        try {
+          const stat = await fs.stat(absolutePath);
+          if (!stat.isDirectory()) {
+            mappedFolderStatus = 'Missing on computer';
+            mappedFolderMissing = true;
+          }
+        } catch {
+          mappedFolderStatus = 'Missing on computer';
+          mappedFolderMissing = true;
+        }
+      }
+    }
+    return {
+      deviceId,
+      displayName: this.getDeviceDisplayName(deviceId),
+      connected: !!connected,
+      connectionStatus: connected ? 'Connected' : 'Disconnected',
+      serialPort: connected?.devicePath ?? 'Not connected',
+      baudRate: connected ? String(connected.baudRate) : 'Not connected',
+      mappedFolder: mappedFolder ?? 'Not mapped',
+      mappedFolderStatus,
+      mappedFolderMissing,
+      libraries: this.getDeviceLibraryMappings(deviceId),
+      runtimeInfo: {
+        version: runtimeInfo?.version ?? 'Unavailable',
+        machine: runtimeInfo?.machine ?? 'Unavailable',
+        uniqueId: runtimeInfo?.uniqueId ?? deviceId,
+        banner: runtimeInfo?.banner ?? 'Unavailable'
+      }
+    };
   }
 
   private toErrorMessage(error: unknown): string {
@@ -4329,7 +4480,7 @@ class DeviceSyncModel {
       canSelectFolders: true,
       canSelectMany: false,
       defaultUri: this.workspaceFolder.uri,
-      openLabel: 'Add Device Folder'
+      openLabel: 'Map Device Folder'
     });
     if (!picked || picked.length === 0) {
       return;
@@ -5629,6 +5780,52 @@ class DeviceSyncModel {
       .replace('__SYNC_TO_DEVICE__', t('Sync Computer to Device'))
       .replace('__SYNC_FROM_DEVICE__', t('Sync Device to Computer'))
       .replace('__CLOSE__', t('Close'))
+      .replace('__CSS_URI__', cssUri.toString())
+      .replace('__SCRIPT_URI__', scriptUri.toString())
+      .replace('__INITIAL_STATE__', initialState);
+  }
+
+  private renderDeviceInfoHtml(webview: vscode.Webview, data: DeviceInfoPanelData): string {
+    const nonce = createWebviewNonce();
+    const template = loadWebviewTemplate(this.context.extensionUri, 'device-info');
+    const cssUri = getWebviewAssetUri(webview, this.context.extensionUri, 'device-info', 'index.css');
+    const scriptUri = getWebviewAssetUri(webview, this.context.extensionUri, 'device-info', 'index.js');
+    const title = this.escapeHtml(`Device info for ${this.getDeviceDisplayNameWithId(data.deviceId)}`);
+    const initialState = escapeJsonForHtml({
+      data,
+      i18n: {
+        refresh: 'Refresh',
+        setDeviceName: 'Set device name',
+        connect: 'Connect',
+        disconnect: 'Disconnect',
+        connection: 'Connection',
+        mappings: 'Device Folder Mapping',
+        runtimeInfo: 'Device info',
+        libraryMappings: 'Device library mappings',
+        status: 'Status',
+        serialPort: 'Serial port',
+        baudRate: 'Baud rate',
+        folder: 'Folder',
+        folderStatus: 'Status',
+        libraries: 'Libraries',
+        version: 'Version',
+        machine: 'Machine',
+        uniqueId: 'Device ID',
+        banner: 'Banner',
+        computerFolder: 'Computer folder',
+        deviceFolder: 'Device folder',
+        libraryStatus: 'Status',
+        noLibraries: 'No library folders mapped.',
+        exists: 'Exists',
+        notMapped: 'Not mapped',
+        missingOnComputer: 'Missing on computer'
+      }
+    });
+
+    return template
+      .replaceAll('__CSP_SOURCE__', webview.cspSource)
+      .replaceAll('__NONCE__', nonce)
+      .replace('__TITLE__', title)
       .replace('__CSS_URI__', cssUri.toString())
       .replace('__SCRIPT_URI__', scriptUri.toString())
       .replace('__INITIAL_STATE__', initialState);
@@ -6996,6 +7193,7 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   );
   context.subscriptions.push(vscode.commands.registerCommand(commandSyncFileWithComputerId, async (node?: SyncNode) => model.syncFileWithComputer(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandOpenSyncFilesId, async (node?: SyncNode) => model.openSyncFiles(node)));
+  context.subscriptions.push(vscode.commands.registerCommand(commandViewDeviceInfoId, async (target?: SyncNode | vscode.Uri) => model.viewDeviceInfo(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandCreateSyncFileId, async (node?: SyncNode) => model.createSyncFile(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandCreateSyncFolderId, async (node?: SyncNode) => model.createSyncFolder(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandRenameSyncPathId, async (node?: SyncNode) => model.renameSyncPath(node)));

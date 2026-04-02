@@ -1,0 +1,139 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+h1,
+h2 {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 20px;
+}
+
+h2 {
+  font-size: 14px;
+}
+
+.subtle {
+  color: var(--vscode-descriptionForeground);
+}
+
+.actions button {
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.section-gap {
+  margin-bottom: 16px;
+}
+
+.gap {
+  display: block;
+  margin-bottom: 15px;
+}
+
+dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 12px;
+}
+
+dt {
+  color: var(--vscode-descriptionForeground);
+}
+
+dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px 0;
+  border-top: 1px solid var(--vscode-panel-border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600;
+  border-top: none;
+  padding: 3px 0;
+}
+
+code,
+pre {
+  font-family: var(--vscode-editor-font-family);
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-panel-border);
+}
+
+.pill.ok {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 18%, transparent);
+}
+
+.pill.warn {
+  background: color-mix(in srgb, var(--vscode-testing-iconFailed) 18%, transparent);
+}
+
+.empty {
+  color: var(--vscode-descriptionForeground);
+}

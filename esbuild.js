@@ -14,12 +14,73 @@ const esbuildProblemMatcherPlugin = {
 	setup(build) {
 		const sourceWebviewsPath = path.resolve(__dirname, 'webviews');
 		const targetWebviewsPath = path.resolve(__dirname, 'dist', 'webviews');
+		const webviewWatchers = new Map();
+		let pendingCopyTimeout = undefined;
 		const copyWebviews = () => {
 			if (!fs.existsSync(sourceWebviewsPath)) {
 				return;
 			}
 			fs.mkdirSync(path.dirname(targetWebviewsPath), { recursive: true });
 			fs.cpSync(sourceWebviewsPath, targetWebviewsPath, { recursive: true, force: true });
+		};
+		const listWebviewDirectories = (rootPath) => {
+			if (!fs.existsSync(rootPath)) {
+				return [];
+			}
+
+			const directories = [rootPath];
+			for (const entry of fs.readdirSync(rootPath, { withFileTypes: true })) {
+				if (!entry.isDirectory()) {
+					continue;
+				}
+				directories.push(...listWebviewDirectories(path.join(rootPath, entry.name)));
+			}
+			return directories;
+		};
+		const scheduleWebviewCopy = () => {
+			if (pendingCopyTimeout) {
+				clearTimeout(pendingCopyTimeout);
+			}
+			pendingCopyTimeout = setTimeout(() => {
+				pendingCopyTimeout = undefined;
+				syncWebviewWatchers();
+				copyWebviews();
+				console.log('[watch] webviews copied');
+			}, 50);
+		};
+		const syncWebviewWatchers = () => {
+			if (!watch) {
+				return;
+			}
+
+			const nextDirectories = new Set(listWebviewDirectories(sourceWebviewsPath));
+			for (const [directoryPath, watcher] of webviewWatchers.entries()) {
+				if (nextDirectories.has(directoryPath)) {
+					continue;
+				}
+				watcher.close();
+				webviewWatchers.delete(directoryPath);
+			}
+
+			for (const directoryPath of nextDirectories) {
+				if (webviewWatchers.has(directoryPath)) {
+					continue;
+				}
+				const watcher = fs.watch(directoryPath, () => {
+					scheduleWebviewCopy();
+				});
+				webviewWatchers.set(directoryPath, watcher);
+			}
+		};
+		const disposeWebviewWatchers = () => {
+			if (pendingCopyTimeout) {
+				clearTimeout(pendingCopyTimeout);
+				pendingCopyTimeout = undefined;
+			}
+			for (const watcher of webviewWatchers.values()) {
+				watcher.close();
+			}
+			webviewWatchers.clear();
 		};
 
 		build.onStart(() => {
@@ -28,12 +89,16 @@ const esbuildProblemMatcherPlugin = {
 		build.onEnd((result) => {
 			if (result.errors.length === 0) {
 				copyWebviews();
+				syncWebviewWatchers();
 			}
 			result.errors.forEach(({ text, location }) => {
 				console.error(`✘ [ERROR] ${text}`);
 				console.error(`    ${location.file}:${location.line}:${location.column}:`);
 			});
 			console.log('[watch] build finished');
+		});
+		build.onDispose(() => {
+			disposeWebviewWatchers();
 		});
 	},
 };
