@@ -169,11 +169,11 @@
       },
       {
         "command": "mekatrol.pydevice.mapdevicehostfolder",
-        "title": "PyDevice: Map device to computer folder"
+        "title": "Map device to computer folder"
       },
       {
         "command": "mekatrol.pydevice.unmapdevicehostfolder",
-        "title": "PyDevice: Unmap device from computer folder"
+        "title": "Unmap device from computer folder"
       },
       {
         "command": "mekatrol.pydevice.adddevicelibraryfolder",
@@ -437,6 +437,18 @@
           "group": "navigation@2"
         }
       ],
+      "explorer/context": [
+        {
+          "command": "mekatrol.pydevice.mapdevicehostfolder",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && mekatrol.pydevice.hasHostSyncChildFolders && !(resourceFilename in mekatrol.pydevice.mappedDeviceIds)",
+          "group": "deviceMapping@1"
+        },
+        {
+          "command": "mekatrol.pydevice.unmapdevicehostfolder",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.mappedDeviceIds",
+          "group": "deviceMapping@2"
+        }
+      ],
       "view/item/context": [
         {
           "command": "mekatrol.pydevice.opencomputersyncitem",
@@ -512,16 +524,6 @@
           "command": "mekatrol.pydevice.deletesyncpath",
           "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && (viewItem == pydevice.hostFile || viewItem == pydevice.hostFileExcluded || viewItem == pydevice.hostFolder || viewItem == pydevice.hostFolderExcluded || viewItem == pydevice.deviceFileMapped || viewItem == pydevice.deviceFileHostMissing || viewItem == pydevice.deviceFileUnmapped || viewItem == pydevice.deviceFileExcludedMapped || viewItem == pydevice.deviceFileExcludedHostMissing || viewItem == pydevice.deviceFileExcludedUnmapped || viewItem == pydevice.deviceFolder || viewItem == pydevice.deviceFolderExcluded)",
           "group": "navigation@9"
-        },
-        {
-          "command": "mekatrol.pydevice.mapdevicehostfolder",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && mekatrol.pydevice.hasHostSyncChildFolders && (viewItem == pydevice.deviceIdNode || viewItem == pydevice.deviceIdNodeMapped)",
-          "group": "navigation@10"
-        },
-        {
-          "command": "mekatrol.pydevice.unmapdevicehostfolder",
-          "when": "view == mekatrol.pydevice.syncExplorer && mekatrol.pydevice.explorerReady && viewItem == pydevice.deviceIdNodeMapped",
-          "group": "navigation@11"
         },
         {
           "command": "mekatrol.pydevice.adddevicelibraryfolder",
