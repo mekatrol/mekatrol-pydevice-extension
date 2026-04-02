@@ -33,6 +33,17 @@ const normaliseOptionalString = (value: string | undefined): string | undefined 
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 };
 
+const pathReferencesPydeviceFolder = (value: string | undefined): boolean => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const slashNormalised = trimmed.replace(/\\/g, '/');
+  const segments = posix.normalize(slashNormalised).split('/').filter((segment) => segment.length > 0);
+  return segments.includes(pydeviceDirectoryName);
+};
+
 const normaliseRelativePath = (value: string | undefined): string | undefined => {
   if (!value) {
     return undefined;
@@ -46,13 +57,22 @@ const normaliseRelativePath = (value: string | undefined): string | undefined =>
   return normalised.length > 0 ? normalised : undefined;
 };
 
+const normaliseConfigPath = (value: string | undefined): string | undefined => {
+  const normalised = normaliseRelativePath(value);
+  if (!normalised || pathReferencesPydeviceFolder(normalised)) {
+    return undefined;
+  }
+
+  return normalised;
+};
+
 const normaliseRelativePathArray = (values: readonly string[] | undefined): string[] => {
   if (!values || values.length === 0) {
     return [];
   }
 
   return [...new Set(values
-    .map((value) => normaliseRelativePath(value))
+    .map((value) => normaliseConfigPath(value))
     .filter((value): value is string => !!value))]
     .sort((a, b) => a.localeCompare(b));
 };
@@ -64,7 +84,7 @@ export class DeviceConfiguration {
   private syncExcludedPaths: string[] = [];
 
   constructor(initial?: DeviceConfigurationJson) {
-    this.hostFolder = normaliseOptionalString(initial?.hostFolder);
+    this.hostFolder = normaliseConfigPath(initial?.hostFolder);
     this.libraryFolders = normaliseRelativePathArray(initial?.libraryFolders);
     this.name = normaliseOptionalString(initial?.name);
     this.syncExcludedPaths = normaliseRelativePathArray(initial?.syncExcludedPaths);
@@ -95,7 +115,7 @@ export class DeviceConfiguration {
   }
 
   setHostFolder(value: string | undefined): void {
-    this.hostFolder = normaliseOptionalString(value);
+    this.hostFolder = normaliseConfigPath(value);
   }
 
   getLibraryFolders(): string[] {
@@ -185,6 +205,16 @@ interface LegacyPyDeviceConfiguration {
   deviceNames?: Record<string, unknown>;
 }
 
+interface ParsedDevicesResult {
+  devices: Record<string, DeviceConfiguration>;
+  removedPydevicePaths: boolean;
+}
+
+const defaultConfigurationMeta = (): MetaPyDeviceConfiguration => ({
+  version: 1,
+  help: 'See: https://github.com/mekatrol/micropython-filemanager/blob/main/pydevice-extension/pydevice/README.md for description of configuration values.'
+});
+
 const cloneDevices = (devices: Record<string, DeviceConfiguration>): Record<string, DeviceConfiguration> => {
   const next: Record<string, DeviceConfiguration> = {};
   for (const [deviceId, device] of Object.entries(devices)) {
@@ -203,11 +233,16 @@ const pruneEmptyDevices = (devices: Record<string, DeviceConfiguration>): Record
   return next;
 };
 
-const parseDevices = (source: Partial<PyDeviceConfiguration> & LegacyPyDeviceConfiguration): Record<string, DeviceConfiguration> => {
+const parseDevices = (source: Partial<PyDeviceConfiguration> & LegacyPyDeviceConfiguration): ParsedDevicesResult => {
   const devices: Record<string, DeviceConfiguration> = {};
+  let removedPydevicePaths = false;
   const legacyMappings = isObjectRecord(source.deviceHostFolderMappings) ? source.deviceHostFolderMappings : {};
   for (const [deviceId, hostFolder] of Object.entries(legacyMappings)) {
     if (typeof hostFolder !== 'string') {
+      continue;
+    }
+    if (pathReferencesPydeviceFolder(hostFolder)) {
+      removedPydevicePaths = true;
       continue;
     }
     const device = devices[deviceId] ?? new DeviceConfiguration();
@@ -227,6 +262,25 @@ const parseDevices = (source: Partial<PyDeviceConfiguration> & LegacyPyDeviceCon
 
   const rawDevices = isObjectRecord(source.devices) ? source.devices : {};
   for (const [deviceId, rawDevice] of Object.entries(rawDevices)) {
+    if (isObjectRecord(rawDevice)) {
+      const rawDeviceRecord = rawDevice as Record<string, unknown>;
+      const rawHostFolder = rawDeviceRecord.hostFolder;
+      const rawLibraryFolders = rawDeviceRecord.libraryFolders;
+      const rawSyncExcludedPaths = rawDeviceRecord.syncExcludedPaths;
+
+      if (typeof rawHostFolder === 'string' && pathReferencesPydeviceFolder(rawHostFolder)) {
+        removedPydevicePaths = true;
+      }
+      if (Array.isArray(rawLibraryFolders)
+        && rawLibraryFolders.some((item) => typeof item === 'string' && pathReferencesPydeviceFolder(item))) {
+        removedPydevicePaths = true;
+      }
+      if (Array.isArray(rawSyncExcludedPaths)
+        && rawSyncExcludedPaths.some((item) => typeof item === 'string' && pathReferencesPydeviceFolder(item))) {
+        removedPydevicePaths = true;
+      }
+    }
+
     const parsed = DeviceConfiguration.fromUnknown(rawDevice);
     const device = devices[deviceId] ?? new DeviceConfiguration();
     device.setHostFolder(parsed.getHostFolder() ?? device.getHostFolder());
@@ -236,7 +290,10 @@ const parseDevices = (source: Partial<PyDeviceConfiguration> & LegacyPyDeviceCon
     devices[deviceId] = device;
   }
 
-  return pruneEmptyDevices(devices);
+  return {
+    devices: pruneEmptyDevices(devices),
+    removedPydevicePaths
+  };
 };
 
 const findDuplicateNames = (devices: Record<string, DeviceConfiguration>): Array<{ name: string; deviceIds: string[] }> => {
@@ -344,11 +401,23 @@ export const loadConfiguration = async (): Promise<PyDeviceConfiguration> => {
     const fileContent = await vscode.workspace.fs.readFile(fileUri);
     const json = Buffer.from(fileContent).toString('utf8');
     const newConfiguration = JSON.parse(json) as Partial<PyDeviceConfiguration> & LegacyPyDeviceConfiguration;
+    const parsedDevices = parseDevices(newConfiguration);
 
     configuration = {
       ...configuration,
-      devices: parseDevices(newConfiguration)
+      devices: parsedDevices.devices
     };
+
+    if (parsedDevices.removedPydevicePaths) {
+      const sanitizedConfiguration: PyDeviceConfigurationWithMeta = {
+        meta: isObjectRecord((newConfiguration as Partial<PyDeviceConfigurationWithMeta>).meta)
+          ? (newConfiguration as Partial<PyDeviceConfigurationWithMeta>).meta as MetaPyDeviceConfiguration
+          : defaultConfigurationMeta(),
+        devices: parsedDevices.devices
+      };
+      await ensurePyDeviceDirectory();
+      await vscode.workspace.fs.writeFile(fileUri, Buffer.from(JSON.stringify(sanitizedConfiguration, null, 2), 'utf8'));
+    }
 
     // The configuration comes from user entered value on disk, given this transpiles to
     // JavaScript then the user can override values to invalid values without error.
@@ -390,10 +459,7 @@ export const saveConfiguration = async (configuration: PyDeviceConfiguration): P
   await ensurePyDeviceDirectory();
 
   let existing: PyDeviceConfigurationWithMeta = {
-    meta: {
-      version: 1,
-      help: 'See: https://github.com/mekatrol/micropython-filemanager/blob/main/pydevice-extension/pydevice/README.md for description of configuration values.'
-    },
+    meta: defaultConfigurationMeta(),
     ...defaultConfiguration,
     devices: {}
   };
@@ -403,9 +469,10 @@ export const saveConfiguration = async (configuration: PyDeviceConfiguration): P
     const json = Buffer.from(fileContent).toString('utf8');
     const parsed = JSON.parse(json) as Partial<PyDeviceConfigurationWithMeta> & LegacyPyDeviceConfiguration;
     const meta = parsed.meta ?? existing.meta;
+    const parsedDevices = parseDevices(parsed);
     existing = {
       meta,
-      devices: parseDevices(parsed)
+      devices: parsedDevices.devices
     };
   } catch {
     // Missing config is expected; file will be created below.
@@ -547,10 +614,7 @@ export const updateDeviceSyncExcludedPaths = async (
 export const createDefaultConfiguration = async (): Promise<[PyDeviceConfigurationResult, string?]> => {
   let configuration: PyDeviceConfigurationWithMeta = Object.assign(
     {
-      meta: {
-        version: 1,
-        help: 'See: https://github.com/mekatrol/micropython-filemanager/blob/main/pydevice-extension/pydevice/README.md for description of configuration values.'
-      }
+      meta: defaultConfigurationMeta()
     },
     defaultConfiguration
   );
@@ -598,10 +662,7 @@ export const createDefaultConfiguration = async (): Promise<[PyDeviceConfigurati
 export const resetDefaultConfiguration = async (): Promise<[PyDeviceConfigurationResult, string?]> => {
   const configuration: PyDeviceConfigurationWithMeta = Object.assign(
     {
-      meta: {
-        version: 1,
-        help: 'See: https://github.com/mekatrol/micropython-filemanager/blob/main/pydevice-extension/pydevice/README.md for description of configuration values.'
-      }
+      meta: defaultConfigurationMeta()
     },
     defaultConfiguration
   );

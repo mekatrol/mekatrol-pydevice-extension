@@ -38,6 +38,30 @@ suite('configuration DeviceConfiguration', () => {
     assert.deepStrictEqual(config.getSyncExcludedPaths(), ['a', 'b']);
   });
 
+  test('drops any path values that reference the .pydevice folder', () => {
+    const config = new DeviceConfiguration({
+      hostFolder: ' .pydevice/device-cache ',
+      libraryFolders: ['lib', 'pkg/.pydevice/cache', '../.pydevice/tmp', 'src'],
+      syncExcludedPaths: ['build', '.pydevice/logs', 'out/.pydevice']
+    });
+
+    assert.strictEqual(config.getHostFolder(), undefined);
+    assert.deepStrictEqual(config.getLibraryFolders(), ['lib', 'src']);
+    assert.deepStrictEqual(config.getSyncExcludedPaths(), ['build']);
+  });
+
+  test('drops absolute paths that reference the .pydevice folder', () => {
+    const config = new DeviceConfiguration({
+      hostFolder: '/workspace/.pydevice/device-cache',
+      libraryFolders: ['/opt/libs', 'C:\\repo\\.pydevice\\cache', '/tmp/.pydevice/staging'],
+      syncExcludedPaths: ['C:\\work\\.pydevice\\logs', '/var/tmp/.pydevice']
+    });
+
+    assert.strictEqual(config.getHostFolder(), undefined);
+    assert.deepStrictEqual(config.getLibraryFolders(), ['opt/libs']);
+    assert.deepStrictEqual(config.getSyncExcludedPaths(), []);
+  });
+
   test('supports adding and removing sync exclusions', () => {
     // Arrange: start from empty configuration.
     const config = new DeviceConfiguration();
@@ -79,6 +103,38 @@ suite('configuration DeviceConfiguration', () => {
       name: 'device',
       syncExcludedPaths: ['x']
     });
+  });
+
+  test('setters silently clear .pydevice path values', () => {
+    const config = new DeviceConfiguration({
+      hostFolder: 'src',
+      libraryFolders: ['lib'],
+      syncExcludedPaths: ['tmp']
+    });
+
+    config.setHostFolder('nested/.pydevice/state');
+    config.setLibraryFolders(['ok', '.pydevice/cache']);
+    config.setSyncExcludedPaths(['allowed', 'tmp/.pydevice']);
+
+    assert.strictEqual(config.getHostFolder(), undefined);
+    assert.deepStrictEqual(config.getLibraryFolders(), ['ok']);
+    assert.deepStrictEqual(config.getSyncExcludedPaths(), ['allowed']);
+  });
+
+  test('setters silently clear absolute .pydevice path values', () => {
+    const config = new DeviceConfiguration({
+      hostFolder: 'src',
+      libraryFolders: ['lib'],
+      syncExcludedPaths: ['tmp']
+    });
+
+    config.setHostFolder('C:\\repo\\.pydevice\\state');
+    config.setLibraryFolders(['/safe/path', '/workspace/.pydevice/cache']);
+    config.setSyncExcludedPaths(['/allowed', 'C:\\repo\\.pydevice\\tmp']);
+
+    assert.strictEqual(config.getHostFolder(), undefined);
+    assert.deepStrictEqual(config.getLibraryFolders(), ['safe/path']);
+    assert.deepStrictEqual(config.getSyncExcludedPaths(), ['allowed']);
   });
 
   test('mapping helpers include only populated values', () => {

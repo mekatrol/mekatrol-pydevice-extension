@@ -583,6 +583,12 @@ class DeviceSyncModel {
     return normalised !== excludedFolder && !normalised.startsWith(`${excludedFolder}/`);
   }
 
+  private pathReferencesPydeviceFolder(targetPath: string): boolean {
+    const slashNormalised = targetPath.trim().replace(/\\/g, '/');
+    const segments = path.posix.normalize(slashNormalised).split('/').filter((segment) => segment.length > 0);
+    return segments.includes(pydeviceDirectoryName);
+  }
+
   private getNodeDeviceId(target?: DeviceTarget): string | undefined {
     if (this.isDeviceTargetUri(target)) {
       const mirrorDeviceId = this.getMirrorDeviceIdFromUri(target);
@@ -4425,16 +4431,12 @@ class DeviceSyncModel {
     }
 
     const selectedPath = picked[0].fsPath;
-    const workspacePath = this.workspaceFolder.uri.fsPath;
-    const pydeviceFolderPath = path.join(workspacePath, pydeviceDirectoryName);
-    const relativeToPydeviceFolder = path.relative(pydeviceFolderPath, selectedPath);
-    const isPydeviceFolderSelection = relativeToPydeviceFolder === ''
-      || (!relativeToPydeviceFolder.startsWith('..') && !path.isAbsolute(relativeToPydeviceFolder));
-    if (isPydeviceFolderSelection) {
-      showWarningMessage(`Cannot add ${pydeviceDirectoryName} as a device library folder.`);
+    if (this.pathReferencesPydeviceFolder(selectedPath)) {
+      showWarningMessage(`Cannot add a library folder inside ${pydeviceDirectoryName}.`);
       return;
     }
 
+    const workspacePath = this.workspaceFolder.uri.fsPath;
     const relativeToWorkspace = path.relative(workspacePath, selectedPath);
     const normalisedRelativePath = toRelativePath(relativeToWorkspace);
     if (!normalisedRelativePath || path.isAbsolute(normalisedRelativePath) || /^[A-Za-z]:\//.test(normalisedRelativePath)) {
