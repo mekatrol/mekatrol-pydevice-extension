@@ -9,6 +9,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PyDeviceConnection } from '../devices/py-device';
+import { deviceMirrorDirectoryName } from './configuration';
 
 const beginMarker = '__PYDEVICE_BEGIN__';
 const endMarker = '__PYDEVICE_END__';
@@ -395,3 +396,31 @@ export const buildSyncStateMap = (
   return status;
 };
 
+export const syncDeviceToMirror = async (board: PyDeviceConnection, deviceId: string): Promise<void> => {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return;
+  }
+
+  const mirrorRoot = path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName, deviceId);
+
+  await fs.rm(mirrorRoot, { recursive: true, force: true });
+  await fs.mkdir(mirrorRoot, { recursive: true });
+
+  const entries = await listDeviceEntries(board);
+
+  for (const entry of entries) {
+    if (entry.isDirectory) {
+      if (entry.relativePath === '') {
+        continue;
+      }
+      const localPath = path.join(mirrorRoot, ...entry.relativePath.split('/'));
+      await fs.mkdir(localPath, { recursive: true });
+    } else {
+      const localPath = path.join(mirrorRoot, ...entry.relativePath.split('/'));
+      await fs.mkdir(path.dirname(localPath), { recursive: true });
+      const content = await readDeviceFile(board, entry.relativePath);
+      await fs.writeFile(localPath, content);
+    }
+  }
+};

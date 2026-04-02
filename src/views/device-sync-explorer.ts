@@ -6514,7 +6514,7 @@ class SyncTreeProvider implements vscode.TreeDataProvider<SyncNode>, vscode.Disp
       return deviceIds.map((deviceId) => {
         const connected = this.model.getConnectedDevice(deviceId);
         const name = this.model.getDeviceName(deviceId);
-        const label = name ?? (connected ? this.toDeviceLeafLabel(connected) : deviceId);
+        const label = name ? `${deviceId} [${name}]` : (connected ? this.toDeviceLeafLabel(connected) : deviceId);
         return new SyncNode(
           {
             side: 'device',

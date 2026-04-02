@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wc -l /home/dad/repos/mekatrol-pydevice-extension/src/**/*.ts)"
+      "Bash(wc -l /home/dad/repos/mekatrol-pydevice-extension/src/**/*.ts)",
+      "Bash(npm run:*)"
     ]
   }
 }

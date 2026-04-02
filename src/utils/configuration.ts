@@ -8,6 +8,7 @@ import { posix } from 'path';
 
 export const pydeviceDirectoryName = '.pydevice';
 export const configurationFileName = `${pydeviceDirectoryName}/config.json`;
+export const deviceMirrorDirectoryName = `${pydeviceDirectoryName}/.device-mirror`;
 
 export enum PyDeviceConfigurationResult {
   AlreadyExists = 'AlreadyExists',

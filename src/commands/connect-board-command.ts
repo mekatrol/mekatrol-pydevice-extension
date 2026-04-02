@@ -15,6 +15,7 @@ import { toDeviceId } from '../devices/identity/device-id';
 import { SerialDeviceProber } from '../devices/discovery/serial-device-prober';
 import { setPyDeviceControllerPortProbingEnabled } from '../devices/controller/py-device-controller-singleton';
 import { getDeviceNames, loadConfiguration, updateDeviceName } from '../utils/configuration';
+import { syncDeviceToMirror } from '../utils/device-filesystem';
 import {
   ConnectRow,
   ConnectStatus,
@@ -437,6 +438,13 @@ const connectBoardForPath = async (
   boardRegistry.add(state);
   await reconnectStateStore.addReconnectDevicePath(board.device);
   notifyStateChanged();
+
+  void syncDeviceToMirror(board, state.deviceId)
+    .then(() => outputChannelLogger.log(`Device mirror synced for ${state.deviceId}.`, false))
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      outputChannelLogger.log(`Device mirror sync failed for ${state.deviceId}: ${reason}`, true);
+    });
 
   const applyRefreshedRuntimeInfo = async (refreshedRuntimeInfo: PyDeviceRuntimeInfo): Promise<void> => {
     const currentState = getConnectedPyDeviceStateByPortPath(state.board.device);
