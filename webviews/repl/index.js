@@ -199,7 +199,7 @@
       reopenPortButtonEl.disabled = isRestarting;
       renderReopenPortButton(active);
 
-      outputEl.textContent = getRenderLines(active).join('\\n');
+      outputEl.textContent = getRenderLines(active).join('\n');
       if (!hasActiveSelectionInConsole()) {
         contentEl.scrollTop = contentEl.scrollHeight;
       }
