@@ -12,6 +12,10 @@ const checkedById = new Map();
 const i18n = initialState.i18n && typeof initialState.i18n === 'object' ? initialState.i18n : {};
 const msg = (key, fallback) => (typeof i18n[key] === 'string' ? i18n[key] : fallback);
 const tbody = document.getElementById('rows');
+const closeButton = document.getElementById('close');
+const syncBusyOverlay = document.getElementById('syncBusyOverlay');
+const syncBusyText = document.getElementById('syncBusyText');
+let syncBusy = false;
 
 const labels = {
   match: {
@@ -49,6 +53,10 @@ const folderIconSvg = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.7
 const syncToDeviceButton = document.getElementById('syncToDevice');
 const syncFromDeviceButton = document.getElementById('syncFromDevice');
 
+if (syncBusyText) {
+  syncBusyText.textContent = msg('syncing', 'Syncing...');
+}
+
 const isActionable = (row) => row.status !== 'match';
 const isChecked = (row) => {
   if (!isActionable(row)) {
@@ -61,6 +69,25 @@ const isChecked = (row) => {
 };
 
 const selectedRowIds = () => rows.filter((row) => isActionable(row) && isChecked(row)).map((row) => row.id);
+
+const updateActionState = () => {
+  const hasDifferences = rows.some((row) => row.status !== 'match');
+  const hasSelection = selectedRowIds().length > 0;
+  if (syncToDeviceButton) {
+    syncToDeviceButton.style.display = hasDifferences ? 'inline-block' : 'none';
+    syncToDeviceButton.disabled = syncBusy || !hasSelection;
+  }
+  if (syncFromDeviceButton) {
+    syncFromDeviceButton.style.display = hasDifferences ? 'inline-block' : 'none';
+    syncFromDeviceButton.disabled = syncBusy || !hasSelection;
+  }
+  if (closeButton) {
+    closeButton.disabled = syncBusy;
+  }
+  if (syncBusyOverlay) {
+    syncBusyOverlay.classList.toggle('hidden', !syncBusy);
+  }
+};
 
 const renderRows = (nextRows) => {
   tbody.textContent = '';
@@ -85,7 +112,7 @@ const renderRows = (nextRows) => {
     checkbox.dataset.id = row.id;
     checkbox.dataset.path = row.deviceRelativePath;
     checkbox.dataset.dir = String(!!row.isDirectory);
-    checkbox.disabled = !isActionable(row);
+    checkbox.disabled = syncBusy || !isActionable(row);
     checkbox.checked = isChecked(row);
     checkbox.addEventListener('change', () => {
       checkedById.set(row.id, checkbox.checked);
@@ -156,7 +183,11 @@ const renderRows = (nextRows) => {
       action.type = 'button';
       action.className = 'link';
       action.textContent = msg('compare', 'Compare');
+      action.disabled = syncBusy;
       action.addEventListener('click', () => {
+        if (syncBusy) {
+          return;
+        }
         vscode.postMessage({ type: 'compare', rowId: row.id });
       });
       actionTd.appendChild(action);
@@ -167,34 +198,31 @@ const renderRows = (nextRows) => {
   }
 };
 
-const setSyncButtonsVisibility = (visible) => {
-  if (syncToDeviceButton) {
-    syncToDeviceButton.style.display = visible ? 'inline-block' : 'none';
-  }
-  if (syncFromDeviceButton) {
-    syncFromDeviceButton.style.display = visible ? 'inline-block' : 'none';
-  }
-};
-
 renderRows(rows);
-const initialHasDifferences = typeof initialState.hasDifferences === 'boolean'
-  ? initialState.hasDifferences
-  : rows.some((row) => row.status !== 'match');
-setSyncButtonsVisibility(initialHasDifferences);
+updateActionState();
 
 if (syncToDeviceButton) {
   syncToDeviceButton.addEventListener('click', () => {
+    if (syncBusy) {
+      return;
+    }
     vscode.postMessage({ type: 'sync_to_device', selectedRowIds: selectedRowIds() });
   });
 }
 
 if (syncFromDeviceButton) {
   syncFromDeviceButton.addEventListener('click', () => {
+    if (syncBusy) {
+      return;
+    }
     vscode.postMessage({ type: 'sync_from_device', selectedRowIds: selectedRowIds() });
   });
 }
 
-document.getElementById('close').addEventListener('click', () => {
+closeButton?.addEventListener('click', () => {
+  if (syncBusy) {
+    return;
+  }
   vscode.postMessage({ type: 'close' });
 });
 
@@ -207,10 +235,15 @@ window.addEventListener('message', (event) => {
     const nextRows = Array.isArray(message.rows) ? message.rows : [];
     rows = nextRows;
     renderRows(rows);
-    if (typeof message.hasDifferences === 'boolean') {
-      setSyncButtonsVisibility(message.hasDifferences);
-    } else {
-      setSyncButtonsVisibility(rows.some((row) => row.status !== 'match'));
+    if (typeof message.busy === 'boolean') {
+      syncBusy = message.busy;
     }
+    updateActionState();
+    return;
+  }
+  if (message.type === 'sync_busy' && typeof message.busy === 'boolean') {
+    syncBusy = message.busy;
+    renderRows(rows);
+    updateActionState();
   }
 });

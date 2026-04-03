@@ -46,6 +46,7 @@ import {
   readDeviceFile,
   renameDevicePath,
   scanComputerSyncEntries,
+  syncDeviceToMirror,
   toRelativePath,
   writeDeviceFile
 } from '../utils/device-filesystem';
@@ -697,6 +698,7 @@ class DeviceSyncModel {
     const deviceEntries = await listDeviceEntries(board);
     if (this.activeDeviceId) {
       await this.pruneMissingDeviceSyncExclusions(this.activeDeviceId, deviceEntries);
+      await this.refreshDeviceMirror(this.activeDeviceId, board);
     }
     const computerEntries = await scanComputerSyncEntries(this.syncRootPath);
     const syncableDeviceEntries = this.filterSyncableEntries(deviceEntries);
@@ -870,27 +872,27 @@ class DeviceSyncModel {
       }
     }
 
-      this.deviceEntries = deviceEntries;
-      this.computerEntries = await scanComputerSyncEntries(this.syncRootPath);
-      this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
-      this.onDidChangeDataEmitter.fire();
-      if (this.notifyDeviceFilesChanged) {
-        await this.notifyDeviceFilesChanged(updatedDeviceFiles);
-      }
+    this.deviceEntries = deviceEntries;
+    this.computerEntries = await scanComputerSyncEntries(this.syncRootPath);
+    this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
+    this.onDidChangeDataEmitter.fire();
+    if (this.notifyDeviceFilesChanged) {
+      await this.notifyDeviceFilesChanged(updatedDeviceFiles);
+    }
 
-      const msg = failedCount > 0
-        ? `Sync from device finished with ${failedCount} error(s).`
-        : 'Sync from device complete.';
-      await syncDialog.finish(msg);
-      showInformationMessage(msg);
-      outputChannelLogger.log(msg, true);
-      this.logSyncEvent('sync-from-device-completed', msg, {
-        deviceId: this.activeDeviceId,
-        totalOperations: syncOperations.length,
-        selectedOperations: selectedOperations.length,
-        failedCount,
-        elapsedMs: Date.now() - startedAt
-      });
+    const msg = failedCount > 0
+      ? `Sync from device finished with ${failedCount} error(s).`
+      : 'Sync from device complete.';
+    await syncDialog.finish(msg);
+    showInformationMessage(msg);
+    outputChannelLogger.log(msg, true);
+    this.logSyncEvent('sync-from-device-completed', msg, {
+      deviceId: this.activeDeviceId,
+      totalOperations: syncOperations.length,
+      selectedOperations: selectedOperations.length,
+      failedCount,
+      elapsedMs: Date.now() - startedAt
+    });
   }
 
   private isWithinLibraryRoots(relativePath: string, libraryRoots: Set<string>): boolean {
@@ -900,6 +902,10 @@ class DeviceSyncModel {
       }
     }
     return false;
+  }
+
+  private async refreshDeviceMirror(deviceId: string, board: NonNullable<ReturnType<typeof getConnectedPyDevice>>): Promise<void> {
+    await syncDeviceToMirror(board, deviceId);
   }
 
   private async syncFromDeviceForDeviceNode(deviceId: string): Promise<void> {
@@ -926,6 +932,7 @@ class DeviceSyncModel {
     const deviceEntries = await listDeviceEntries(board);
     if (this.activeDeviceId) {
       await this.pruneMissingDeviceSyncExclusions(this.activeDeviceId, deviceEntries);
+      await this.refreshDeviceMirror(this.activeDeviceId, board);
     }
     const syncableDeviceEntries = this.filterSyncableEntries(deviceEntries);
     const deviceEntryMap = new Map(syncableDeviceEntries.map((entry) => [toRelativePath(entry.relativePath), entry]));
@@ -1537,6 +1544,9 @@ class DeviceSyncModel {
 
     this.computerEntries = computerEntries;
     this.deviceEntries = await listDeviceEntries(board);
+    if (this.activeDeviceId) {
+      await this.refreshDeviceMirror(this.activeDeviceId, board);
+    }
     this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
     this.onDidChangeDataEmitter.fire();
     if (this.notifyDeviceFilesChanged) {
@@ -1968,6 +1978,15 @@ class DeviceSyncModel {
         });
       }
     };
+    const setSyncBusy = async (busy: boolean): Promise<void> => {
+      const posted = await panel.webview.postMessage({
+        type: 'sync_busy',
+        busy
+      });
+      if (!posted) {
+        panel.webview.html = renderSyncViewHtml();
+      }
+    };
     let watcherRefreshQueued = false;
     let watcherRefreshPending = false;
     let pendingWatcherEvent: FileWatcherEvent | undefined;
@@ -2123,15 +2142,20 @@ class DeviceSyncModel {
               await pushRowsToPanel(nextRows, this.hasActionableSyncDifferences(nextRows), 'sync-view-status-update-to-device');
             };
 
-            await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'to_device', currentRows, selected, setStatus);
-            const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
-            const mergedRows = refreshedRows.map((row) => {
-              const previous = currentRows.find((item) => item.id === row.id);
-              return previous?.runStatus
-                ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
-                : row;
-            });
-            await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-to-device');
+            await setSyncBusy(true);
+            try {
+              await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'to_device', currentRows, selected, setStatus);
+              const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
+              const mergedRows = refreshedRows.map((row) => {
+                const previous = currentRows.find((item) => item.id === row.id);
+                return previous?.runStatus
+                  ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
+                  : row;
+              });
+              await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-to-device');
+            } finally {
+              await setSyncBusy(false);
+            }
           })();
           return;
         }
@@ -2156,15 +2180,20 @@ class DeviceSyncModel {
               await pushRowsToPanel(nextRows, this.hasActionableSyncDifferences(nextRows), 'sync-view-status-update-from-device');
             };
 
-            await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'from_device', currentRows, selected, setStatus);
-            const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
-            const mergedRows = refreshedRows.map((row) => {
-              const previous = currentRows.find((item) => item.id === row.id);
-              return previous?.runStatus
-                ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
-                : row;
-            });
-            await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-from-device');
+            await setSyncBusy(true);
+            try {
+              await this.runSyncFromSyncViewRows(deviceId, connectedBoard, 'from_device', currentRows, selected, setStatus);
+              const refreshedRows = await this.buildDeviceFileSyncRows(deviceId, connectedBoard, targetRelativePath);
+              const mergedRows = refreshedRows.map((row) => {
+                const previous = currentRows.find((item) => item.id === row.id);
+                return previous?.runStatus
+                  ? { ...row, runStatus: previous.runStatus, runErrorText: previous.runErrorText }
+                  : row;
+              });
+              await pushRowsToPanel(mergedRows, this.hasActionableSyncDifferences(mergedRows), 'sync-view-post-sync-from-device');
+            } finally {
+              await setSyncBusy(false);
+            }
           })();
           return;
         }
@@ -3174,6 +3203,9 @@ class DeviceSyncModel {
 
     this.deviceEntries = deviceEntries;
     this.computerEntries = await scanComputerSyncEntries(computerRootPath);
+    if (this.activeDeviceId) {
+      await this.refreshDeviceMirror(this.activeDeviceId, board);
+    }
     this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
     this.onDidChangeDataEmitter.fire();
 
@@ -3295,6 +3327,9 @@ class DeviceSyncModel {
 
     this.computerEntries = computerEntries;
     this.deviceEntries = await listDeviceEntries(board);
+    if (this.activeDeviceId) {
+      await this.refreshDeviceMirror(this.activeDeviceId, board);
+    }
     this.syncStates = buildSyncStateMap(this.filterSyncableEntries(this.computerEntries), this.filterSyncableEntries(this.deviceEntries));
     this.onDidChangeDataEmitter.fire();
     if (this.notifyDeviceFilesChanged) {
@@ -5783,6 +5818,7 @@ class DeviceSyncModel {
     }
 
     this.deviceEntries = await listDeviceEntries(board);
+    await this.refreshDeviceMirror(deviceId, board);
     if (this.syncRootPath) {
       this.computerEntries = await scanComputerSyncEntries(this.syncRootPath);
     }
@@ -5873,7 +5909,8 @@ class DeviceSyncModel {
         error: t('error'),
         excludedPathNote: t('this path is configured to be excluded by default'),
         noFilesToSync: t('No files to sync'),
-        compare: t('Compare')
+        compare: t('Compare'),
+        syncing: t('Syncing...')
       }
     });
 

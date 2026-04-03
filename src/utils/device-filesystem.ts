@@ -424,3 +424,13 @@ export const syncDeviceToMirror = async (board: PyDeviceConnection, deviceId: st
     }
   }
 };
+
+export const removeDeviceMirror = async (deviceId: string): Promise<void> => {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return;
+  }
+
+  const mirrorRoot = path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName, deviceId);
+  await fs.rm(mirrorRoot, { recursive: true, force: true });
+};
