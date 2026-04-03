@@ -436,13 +436,23 @@
         },
         {
           "command": "mekatrol.pydevice.mapdevicehostfolder",
-          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && mekatrol.pydevice.hasHostSyncChildFolders && !(resourceFilename in mekatrol.pydevice.mappedDeviceIds)",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && !(resourceFilename in mekatrol.pydevice.mappedDeviceIds)",
           "group": "pydevice@5"
         },
         {
           "command": "mekatrol.pydevice.unmapdevicehostfolder",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.mappedDeviceIds",
           "group": "pydevice@6"
+        },
+        {
+          "command": "mekatrol.pydevice.syncnodefromdevice",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.mappedDeviceIds && resourceFilename in mekatrol.pydevice.connectedDeviceIds",
+          "group": "pydevice@6.1"
+        },
+        {
+          "command": "mekatrol.pydevice.syncnodetodevice",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && resourceFilename in mekatrol.pydevice.mappedDeviceIds && resourceFilename in mekatrol.pydevice.connectedDeviceIds",
+          "group": "pydevice@6.2"
         },
         {
           "command": "mekatrol.pydevice.setdevicename",

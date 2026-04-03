@@ -41,7 +41,8 @@ h2 {
   color: var(--vscode-descriptionForeground);
 }
 
-.actions button {
+.actions button,
+.buttons button {
   border: 1px solid var(--vscode-button-border, transparent);
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
@@ -49,7 +50,8 @@ h2 {
   cursor: pointer;
 }
 
-.actions button:disabled {
+.actions button:disabled,
+.buttons button:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -59,6 +61,13 @@ h2 {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .spinner {

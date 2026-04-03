@@ -50,6 +50,7 @@ import {
   writeDeviceFile
 } from '../utils/device-filesystem';
 import { FileWatcher, FileWatcherEvent } from '../utils/file-watcher';
+import { listSerialDevices } from '../utils/serial-port';
 import { createWebviewNonce, escapeJsonForHtml, getWebviewAssetUri, loadWebviewTemplate } from '../utils/webview-template';
 import { syncStateStore } from '../sync/sync-state-store';
 import { emitPyDeviceLoggerEvent } from '../logging/pydevice-logger-events';
@@ -131,6 +132,10 @@ interface DeviceInfoPanelData {
   deviceId: string;
   displayName: string;
   connected: boolean;
+  connectDisabled: boolean;
+  connectDisabledReason?: string;
+  syncDisabled: boolean;
+  syncDisabledReason?: string;
   connectionStatus: string;
   serialPort: string;
   baudRate: string;
@@ -1553,8 +1558,8 @@ class DeviceSyncModel {
     });
   }
 
-  async syncNodeFromDevice(node?: SyncNode): Promise<void> {
-    const targetNode = this.resolveTargetNode(node);
+  async syncNodeFromDevice(target?: DeviceTarget): Promise<void> {
+    const targetNode = this.resolveTargetNode(target);
     this.logSyncEvent('sync-node-from-device-requested', 'Scoped sync from device requested.', {
       side: targetNode?.data.side,
       relativePath: targetNode?.data.relativePath,
@@ -1585,8 +1590,8 @@ class DeviceSyncModel {
     await this.pullFromDevicePath(relativePath, isDirectory, scope);
   }
 
-  async syncNodeToDevice(node?: SyncNode): Promise<void> {
-    const targetNode = this.resolveTargetNode(node);
+  async syncNodeToDevice(target?: DeviceTarget): Promise<void> {
+    const targetNode = this.resolveTargetNode(target);
     this.logSyncEvent('sync-node-to-device-requested', 'Scoped sync to device requested.', {
       side: targetNode?.data.side,
       relativePath: targetNode?.data.relativePath,
@@ -1889,14 +1894,6 @@ class DeviceSyncModel {
       return;
     }
 
-    const scopedTargetNode = targetNode?.data.side === 'device' ? targetNode : undefined;
-    const targetRelativePath = scopedTargetNode
-      && !scopedTargetNode.data.isRoot
-      && !scopedTargetNode.data.isDeviceIdNode
-      ? toRelativePath(scopedTargetNode.data.relativePath)
-      : '';
-    let currentRows = await this.buildDeviceFileSyncRows(deviceId, board, targetRelativePath);
-    let currentHasDifferences = this.hasActionableSyncDifferences(currentRows);
     const panel = vscode.window.createWebviewPanel(
       'pydevice.syncFiles',
       `Sync Files: ${this.getDeviceDisplayName(deviceId)}`,
@@ -1908,6 +1905,37 @@ class DeviceSyncModel {
         ]
       }
     );
+    panel.webview.html = this.renderStatusPanelHtml(
+      panel.webview,
+      `Sync Files: ${this.getDeviceDisplayName(deviceId)}`,
+      'Loading sync files...'
+    );
+
+    const scopedTargetNode = targetNode?.data.side === 'device' ? targetNode : undefined;
+    const targetRelativePath = scopedTargetNode
+      && !scopedTargetNode.data.isRoot
+      && !scopedTargetNode.data.isDeviceIdNode
+      ? toRelativePath(scopedTargetNode.data.relativePath)
+      : '';
+    let currentRows: DeviceFileSyncRow[];
+    try {
+      currentRows = await this.buildDeviceFileSyncRows(deviceId, board, targetRelativePath);
+    } catch (error) {
+      const reason = this.toErrorMessage(error);
+      panel.webview.html = this.renderStatusPanelHtml(
+        panel.webview,
+        `Sync Files: ${this.getDeviceDisplayName(deviceId)}`,
+        `Unable to load sync files. ${reason}`
+      );
+      this.logSyncEvent('sync-view-failed', 'Failed to build sync view rows.', {
+        deviceId,
+        relativePath: targetRelativePath,
+        error: reason
+      });
+      showErrorMessage(`Unable to open sync files for ${this.getDeviceDisplayNameWithId(deviceId)}. ${reason}`);
+      return;
+    }
+    let currentHasDifferences = this.hasActionableSyncDifferences(currentRows);
     this.logSyncEvent('sync-view-rendered', 'Sync view rendered.', {
       deviceId,
       totalRows: currentRows.length,
@@ -2208,6 +2236,16 @@ class DeviceSyncModel {
       await render();
     };
 
+    const postConnectAvailability = async (busy?: boolean): Promise<void> => {
+      const connectState = await this.getDeviceInfoConnectState(deviceId);
+      await panel.webview.postMessage({
+        type: 'connectState',
+        disabled: connectState.disabled,
+        reason: connectState.reason,
+        busy
+      });
+    };
+
     const connectionDisposable = onBoardConnectionsChanged(() => {
       void refreshPanel();
     });
@@ -2220,11 +2258,18 @@ class DeviceSyncModel {
         void refreshPanel();
       }
     });
+    const serialPortMonitor = setInterval(() => {
+      void postConnectAvailability();
+    }, 2000);
     const messageDisposable = panel.webview.onDidReceiveMessage((message: unknown) => {
       if (!message || typeof message !== 'object') {
         return;
       }
       const typed = message as { type?: string };
+      if (typed.type === 'close') {
+        panel.dispose();
+        return;
+      }
       if (typed.type === 'refresh') {
         void refreshPanel();
         return;
@@ -2245,7 +2290,7 @@ class DeviceSyncModel {
             });
             await refreshPanel();
           } finally {
-            await panel.webview.postMessage({ type: 'connectState', disabled: false, busy: false });
+            await postConnectAvailability(false);
           }
         })();
         return;
@@ -2255,6 +2300,10 @@ class DeviceSyncModel {
           await this.closeDeviceConnection(vscode.Uri.file(path.join(this.workspaceFolder?.uri.fsPath ?? '', deviceMirrorDirectoryName, deviceId)));
           await refreshPanel();
         })();
+        return;
+      }
+      if (typed.type === 'sync') {
+        void this.openSyncFiles(vscode.Uri.file(path.join(this.workspaceFolder?.uri.fsPath ?? '', deviceMirrorDirectoryName, deviceId)));
         return;
       }
       if (typed.type === 'set_device_name') {
@@ -2269,6 +2318,7 @@ class DeviceSyncModel {
       connectionDisposable.dispose();
       configDisposable.dispose();
       saveDisposable.dispose();
+      clearInterval(serialPortMonitor);
       messageDisposable.dispose();
     });
 
@@ -2461,8 +2511,29 @@ class DeviceSyncModel {
     outputChannelLogger.log(msg, true);
   }
 
-  private resolveTargetNode(node?: SyncNode): SyncNode | undefined {
-    return node ?? this.selectedNode;
+  private resolveTargetNode(target?: DeviceTarget): SyncNode | undefined {
+    if (target instanceof SyncNode) {
+      return target;
+    }
+
+    if (this.isDeviceTargetUri(target)) {
+      const deviceId = this.getMirrorDeviceIdFromUri(target);
+      if (deviceId) {
+        return new SyncNode(
+          {
+            side: 'device',
+            relativePath: '',
+            isDirectory: true,
+            deviceId,
+            isDeviceIdNode: true
+          },
+          this.getDeviceDisplayName(deviceId),
+          vscode.TreeItemCollapsibleState.Collapsed
+        );
+      }
+    }
+
+    return this.selectedNode;
   }
 
   private matchesTarget(entryPath: string, targetPath: string, includeDescendants: boolean): boolean {
@@ -2625,6 +2696,7 @@ class DeviceSyncModel {
 
   private async buildDeviceInfoPanelData(deviceId: string): Promise<DeviceInfoPanelData> {
     const connected = this.getConnectedDevice(deviceId);
+    const connectState = await this.getDeviceInfoConnectState(deviceId);
     const runtimeInfo = connected?.runtimeInfo;
     const mappedFolder = this.getMappedHostFolder(deviceId);
     let mappedFolderStatus = 'Not mapped';
@@ -2653,6 +2725,10 @@ class DeviceSyncModel {
       deviceId,
       displayName: this.getDeviceDisplayName(deviceId),
       connected: !!connected,
+      connectDisabled: connectState.disabled,
+      connectDisabledReason: connectState.reason,
+      syncDisabled: !connected,
+      syncDisabledReason: connected ? undefined : 'Connect this device before opening sync files.',
       connectionStatus: connected ? 'Connected' : 'Disconnected',
       serialPort: connected?.devicePath ?? 'Not connected',
       baudRate: connected ? String(connected.baudRate) : 'Not connected',
@@ -2667,6 +2743,34 @@ class DeviceSyncModel {
         banner: runtimeInfo?.banner ?? 'Unavailable'
       }
     };
+  }
+
+  private async getDeviceInfoConnectState(deviceId: string): Promise<{ disabled: boolean; reason?: string }> {
+    if (this.getConnectedDevice(deviceId)) {
+      return { disabled: false };
+    }
+
+    try {
+      const ports = await listSerialDevices();
+      const connectedPaths = new Set(getConnectedPyDevices().map((item) => item.devicePath));
+      const availablePorts = ports.filter((port) => !connectedPaths.has(port.path));
+
+      if (availablePorts.length > 0) {
+        return { disabled: false };
+      }
+
+      return {
+        disabled: true,
+        reason: ports.length === 0
+          ? 'No serial ports available to connect.'
+          : 'All serial ports are already in use by connected devices.'
+      };
+    } catch {
+      return {
+        disabled: true,
+        reason: 'Unable to determine serial port availability.'
+      };
+    }
   }
 
   private toErrorMessage(error: unknown): string {
@@ -5790,6 +5894,33 @@ class DeviceSyncModel {
       .replace('__INITIAL_STATE__', initialState);
   }
 
+  private renderStatusPanelHtml(webview: vscode.Webview, title: string, message: string): string {
+    const nonce = createWebviewNonce();
+    const escapedTitle = this.escapeHtml(title);
+    const escapedMessage = this.escapeHtml(message);
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+  <title>${escapedTitle}</title>
+  <style>
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; }
+    .wrap { padding: 24px; }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    p { margin: 0; color: var(--vscode-descriptionForeground); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>${escapedTitle}</h2>
+    <p>${escapedMessage}</p>
+  </div>
+</body>
+</html>`;
+  }
+
   private renderDeviceInfoHtml(webview: vscode.Webview, data: DeviceInfoPanelData): string {
     const nonce = createWebviewNonce();
     const template = loadWebviewTemplate(this.context.extensionUri, 'device-info');
@@ -5801,9 +5932,11 @@ class DeviceSyncModel {
       i18n: {
         refresh: 'Refresh',
         setDeviceName: 'Set device name',
+        sync: 'Sync files',
         connect: 'Connect',
         connecting: 'Connecting...',
         disconnect: 'Disconnect',
+        close: 'Close',
         connection: 'Connection',
         mappings: 'Device Folder Mapping',
         runtimeInfo: 'Device info',
@@ -7198,7 +7331,7 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     vscode.commands.registerCommand(commandOpenDeviceFileFromTreeId, async (node?: SyncNode) => model.openDeviceFile(node, { explorerClick: true }))
   );
   context.subscriptions.push(vscode.commands.registerCommand(commandSyncFileWithComputerId, async (node?: SyncNode) => model.syncFileWithComputer(node)));
-  context.subscriptions.push(vscode.commands.registerCommand(commandOpenSyncFilesId, async (node?: SyncNode) => model.openSyncFiles(node)));
+  context.subscriptions.push(vscode.commands.registerCommand(commandOpenSyncFilesId, async (target?: SyncNode | vscode.Uri) => model.openSyncFiles(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandViewDeviceInfoId, async (target?: SyncNode | vscode.Uri) => model.viewDeviceInfo(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandCreateSyncFileId, async (node?: SyncNode) => model.createSyncFile(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandCreateSyncFolderId, async (node?: SyncNode) => model.createSyncFolder(node)));

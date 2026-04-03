@@ -11,7 +11,10 @@ const data = initialState.data && typeof initialState.data === 'object' ? initia
 const i18n = initialState.i18n && typeof initialState.i18n === 'object' ? initialState.i18n : {};
 const msg = (key, fallback) => (typeof i18n[key] === 'string' ? i18n[key] : fallback);
 let connectBusy = false;
-let connectDisabled = false;
+let connectDisabled = !!data.connectDisabled;
+let connectDisabledReason = typeof data.connectDisabledReason === 'string' ? data.connectDisabledReason : '';
+let syncDisabled = !!data.syncDisabled;
+let syncDisabledReason = typeof data.syncDisabledReason === 'string' ? data.syncDisabledReason : '';
 
 const setText = (id, value) => {
   const element = document.getElementById(id);
@@ -23,10 +26,12 @@ const setText = (id, value) => {
 setText('displayName', data.displayName || '');
 setText('deviceId', data.deviceId || '');
 setText('setDeviceName', msg('setDeviceName', 'Set device name'));
+setText('sync', msg('sync', 'Sync files'));
 setText('connect', msg('connect', 'Connect'));
 setText('connectBusyText', msg('connecting', 'Connecting...'));
 setText('disconnect', msg('disconnect', 'Disconnect'));
 setText('refresh', msg('refresh', 'Refresh'));
+setText('close', msg('close', 'Close'));
 setText('connectionTitle', msg('connection', 'Connection'));
 setText('mappingsTitle', msg('mappings', 'Device Folder Mapping'));
 setText('runtimeTitle', msg('runtimeInfo', 'Device info'));
@@ -64,10 +69,16 @@ if (connectionStatusElement) {
 }
 
 const connectButton = document.getElementById('connect');
+const syncButton = document.getElementById('sync');
 const connectBusyOverlay = document.getElementById('connectBusyOverlay');
-const updateConnectBusyState = () => {
+const updateActionState = () => {
   if (connectButton) {
     connectButton.disabled = connectDisabled || connectBusy;
+    connectButton.title = connectDisabledReason || '';
+  }
+  if (syncButton) {
+    syncButton.disabled = syncDisabled;
+    syncButton.title = syncDisabledReason || '';
   }
   if (connectBusyOverlay) {
     connectBusyOverlay.classList.toggle('hidden', !connectBusy);
@@ -138,8 +149,15 @@ document.getElementById('connect')?.addEventListener('click', () => {
     return;
   }
   connectDisabled = true;
-  updateConnectBusyState();
+  updateActionState();
   vscode.postMessage({ type: 'connect' });
+});
+
+document.getElementById('sync')?.addEventListener('click', () => {
+  if (syncDisabled) {
+    return;
+  }
+  vscode.postMessage({ type: 'sync' });
 });
 
 document.getElementById('disconnect')?.addEventListener('click', () => {
@@ -154,6 +172,10 @@ document.getElementById('refresh')?.addEventListener('click', () => {
   vscode.postMessage({ type: 'refresh' });
 });
 
+document.getElementById('close')?.addEventListener('click', () => {
+  vscode.postMessage({ type: 'close' });
+});
+
 window.addEventListener('message', (event) => {
   const message = event.data;
   if (!message || typeof message !== 'object') {
@@ -163,16 +185,21 @@ window.addEventListener('message', (event) => {
     if (typeof message.disabled === 'boolean') {
       connectDisabled = message.disabled;
     }
+    if (typeof message.reason === 'string') {
+      connectDisabledReason = message.reason;
+    } else if (message.reason === null || message.reason === undefined) {
+      connectDisabledReason = '';
+    }
     if (typeof message.busy === 'boolean') {
       connectBusy = message.busy;
     }
-    updateConnectBusyState();
+    updateActionState();
     return;
   }
   if (message.type === 'connectBusy' && typeof message.busy === 'boolean') {
     connectBusy = message.busy;
-    updateConnectBusyState();
+    updateActionState();
   }
 });
 
-updateConnectBusyState();
+updateActionState();

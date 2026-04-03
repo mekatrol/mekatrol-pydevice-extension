@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { outputChannelLogger } from '../logging/output-channel';
 import { MicroPythonDevice, PyDeviceConnection, PyDeviceRuntimeInfo } from '../devices/py-device';
-import { listSerialDevices } from '../utils/serial-port';
+import { listAllSerialPorts, listSerialDevices } from '../utils/serial-port';
 import { autoReconnectDevicesCacheKey, getWorkspaceCacheValue, setWorkspaceCacheValue } from '../utils/workspace-cache';
 import { ConnectedPyDeviceRegistry, ConnectedPyDeviceState, ConnectedPyDeviceSnapshot } from '../devices/registry/connected-py-device-registry';
 import { ReconnectStateStore } from '../devices/registry/reconnect-state-store';
@@ -113,8 +113,34 @@ const isTransientPortLockError = (error: unknown): boolean => {
 
 const isMissingSerialPortError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLocaleLowerCase() : String(error).toLocaleLowerCase();
-  return (message.includes('failed to open serial port') || message.includes('cannot open'))
-    && (message.includes('no such file or directory') || message.includes('file not found'));
+  return (
+    ((message.includes('failed to open serial port') || message.includes('cannot open'))
+      && (message.includes('no such file or directory') || message.includes('file not found')))
+    || message.includes('serial port is not connected')
+    || message.includes('the serial port must be open')
+    || message.includes('port is not open')
+  );
+};
+
+const didSerialPortDisappear = async (devicePath: string): Promise<boolean> => {
+  try {
+    const ports = await listAllSerialPorts();
+    return !ports.some((port) => port.path === devicePath);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    outputChannelLogger.log(`Unable to verify serial port availability for ${devicePath}. ${reason}`, false);
+    return false;
+  }
+};
+
+const throwIfSerialPortUnavailable = async (
+  devicePath: string,
+  phase: string,
+  error?: unknown
+): Promise<void> => {
+  if (isMissingSerialPortError(error) || await didSerialPortDisappear(devicePath)) {
+    throw new Error(`Serial port became unavailable during ${phase}: ${devicePath}`);
+  }
 };
 
 const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -151,8 +177,10 @@ const readBoardRuntimeInfoWithRetries = async (
       return await board.getDeviceInfo();
     } catch (error) {
       lastError = error;
+      await throwIfSerialPortUnavailable(devicePath, 'connect', error);
       if (attempt < attempts) {
         await wait(delayMs);
+        await throwIfSerialPortUnavailable(devicePath, 'connect');
       }
     }
   }
@@ -162,10 +190,14 @@ const readBoardRuntimeInfoWithRetries = async (
   // Try a hard reboot (close/reopen the port, which triggers a board reset on
   // most RP2040/STM32 boards) and then attempt one final read.
   try {
+    await throwIfSerialPortUnavailable(devicePath, 'connect');
     await board.hardReboot();
+    await throwIfSerialPortUnavailable(devicePath, 'connect');
     await wait(1500); // board boot time after reset
+    await throwIfSerialPortUnavailable(devicePath, 'connect');
     return await board.getDeviceInfo();
-  } catch {
+  } catch (error) {
+    await throwIfSerialPortUnavailable(devicePath, 'connect', error);
     // hard reboot also failed; fall through to warning
   }
 
@@ -189,8 +221,10 @@ const readBoardRuntimeInfoWithRecovery = async (
       return await board.probeDeviceInfo(Math.max(probeRuntimeTimeoutMs, pyDeviceInternalTimeouts.runtimeInfoRecoveryProbeTimeoutMinimumMs));
     } catch (error) {
       lastError = error;
+      await throwIfSerialPortUnavailable(devicePath, 'recovery connect', error);
       if (attempt < runtimeInfoRecoveryProbeAttempts) {
         await wait(runtimeInfoRecoveryProbeDelayMs);
+        await throwIfSerialPortUnavailable(devicePath, 'recovery connect');
       }
     }
   }
@@ -201,8 +235,10 @@ const readBoardRuntimeInfoWithRecovery = async (
       return await board.getDeviceInfo(Math.max(aggressiveRecoveryTimeoutMs, pyDeviceInternalTimeouts.runtimeInfoRecoveryGetInfoTimeoutMinimumMs));
     } catch (error) {
       lastError = error;
+      await throwIfSerialPortUnavailable(devicePath, 'recovery connect', error);
       if (attempt < runtimeInfoRecoveryRebootAttempts) {
         await wait(runtimeInfoRecoveryRebootDelayMs);
+        await throwIfSerialPortUnavailable(devicePath, 'recovery connect');
       }
     }
   }
@@ -438,6 +474,7 @@ const connectBoardForPath = async (
   // the REPL doesn't start responding until the USB stack has processed the DTR/line-state
   // notification sent when the host opens the port.
   await wait(500);
+  await throwIfSerialPortUnavailable(devicePath, 'connect');
 
   let connected = false;
   try {
@@ -811,6 +848,7 @@ export const initConnectBoardCommand = (context: vscode.ExtensionContext) => {
           throw error;
         }
         await wait(350);
+        await throwIfSerialPortUnavailable(devicePath, 'connect retry', error);
         await connectBoardForPath(devicePath, baudRate, true, recoveryMode);
       }
     } catch (error) {
@@ -1201,6 +1239,7 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
             throw error;
           }
           await wait(350);
+          await throwIfSerialPortUnavailable(initialRow.devicePath, 'connect retry', error);
           await withTimeout(
             connectBoardForPath(initialRow.devicePath, defaultBaudRate, true, true),
             pyDeviceInternalTimeouts.recoveryConnectAttemptTimeoutMs,
