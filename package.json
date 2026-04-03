@@ -51,6 +51,14 @@
         }
       },
       {
+        "command": "mekatrol.pydevice.showdeviceconnectionview",
+        "title": "Connect to Devices",
+        "icon": {
+          "light": "images/connect-multi-light.svg",
+          "dark": "images/connect-multi-dark.svg"
+        }
+      },
+      {
         "command": "mekatrol.pydevice.disconnectboard",
         "title": "Disconnect from board"
       },
@@ -256,6 +264,10 @@
           "when": "false"
         },
         {
+          "command": "mekatrol.pydevice.showdeviceconnectionview",
+          "when": "false"
+        },
+        {
           "command": "mekatrol.pydevice.disconnectboard",
           "when": "false"
         },
@@ -397,6 +409,11 @@
         }
       ],
       "explorer/context": [
+        {
+          "command": "mekatrol.pydevice.showdeviceconnectionview",
+          "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror$/",
+          "group": "pydevice-connect@1"
+        },
         {
           "command": "mekatrol.pydevice.connectboardwithpicker",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/ && !(resourceFilename in mekatrol.pydevice.connectedDeviceIds)",

@@ -13,6 +13,7 @@ import {
   initConnectionStateMonitor,
   initRecoveryConnectCommand,
   initDisconnectBoardCommand,
+  initShowDeviceConnectionViewCommand,
   initSoftRebootBoardCommand,
   initSetAutoReconnectCommand,
   initToggleBoardConnectionCommand,
@@ -118,6 +119,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
   await runInit('initAutoDetectDevicesCommand', () => initAutoDetectDevicesCommand(context));
   await runInit('initConnectBoardCommand', () => initConnectBoardCommand(context));
   await runInit('initRecoveryConnectCommand', () => initRecoveryConnectCommand(context));
+  await runInit('initShowDeviceConnectionViewCommand', () => initShowDeviceConnectionViewCommand(context));
   await runInit('initDisconnectBoardCommand', () => initDisconnectBoardCommand(context));
   await runInit('initSoftRebootBoardCommand', () => initSoftRebootBoardCommand(context));
   await runInit('initSetAutoReconnectCommand', () => initSetAutoReconnectCommand(context));

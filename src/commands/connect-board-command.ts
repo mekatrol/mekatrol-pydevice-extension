@@ -1803,6 +1803,14 @@ export const initRecoveryConnectCommand = (context: vscode.ExtensionContext) => 
   context.subscriptions.push(command);
 };
 
+export const initShowDeviceConnectionViewCommand = (context: vscode.ExtensionContext) => {
+  const command = vscode.commands.registerCommand('mekatrol.pydevice.showdeviceconnectionview', async () => {
+    await vscode.commands.executeCommand('mekatrol.pydevice.connectboardrecovery');
+  });
+
+  context.subscriptions.push(command);
+};
+
 export const initDisconnectBoardCommand = (context: vscode.ExtensionContext) => {
   const command = vscode.commands.registerCommand('mekatrol.pydevice.disconnectboard', async (arg?: unknown) => {
     const targetDeviceId = typeof arg === 'string'

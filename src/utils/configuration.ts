@@ -449,6 +449,10 @@ const ensurePyDeviceDirectory = async (): Promise<void> => {
     path: posix.join(folderUri.path, pydeviceDirectoryName)
   });
   await vscode.workspace.fs.createDirectory(pydeviceDirUri);
+  const deviceMirrorDirUri = folderUri.with({
+    path: posix.join(folderUri.path, deviceMirrorDirectoryName)
+  });
+  await vscode.workspace.fs.createDirectory(deviceMirrorDirUri);
 };
 
 export const saveConfiguration = async (configuration: PyDeviceConfiguration): Promise<void> => {

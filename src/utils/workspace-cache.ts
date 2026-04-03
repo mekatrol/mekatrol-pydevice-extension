@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import { posix } from 'path';
 import { pyDeviceTimeoutSettings } from '../constants/timeout-constants';
-import { pydeviceDirectoryName } from './configuration';
+import { deviceMirrorDirectoryName, pydeviceDirectoryName } from './configuration';
 
 export const workspaceCacheFileName = `${pydeviceDirectoryName}/settings.json`;
 export const autoReconnectDevicesCacheKey = 'autoReconnectDevices';
@@ -75,6 +75,10 @@ const saveCacheToPrimaryFile = async (): Promise<void> => {
     path: posix.join(workspaceUri.path, pydeviceDirectoryName)
   });
   await vscode.workspace.fs.createDirectory(pydeviceDirUri);
+  const deviceMirrorDirUri = workspaceUri.with({
+    path: posix.join(workspaceUri.path, deviceMirrorDirectoryName)
+  });
+  await vscode.workspace.fs.createDirectory(deviceMirrorDirUri);
 
   const content = JSON.stringify(cacheState, null, 2);
   await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
