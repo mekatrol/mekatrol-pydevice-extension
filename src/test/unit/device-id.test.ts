@@ -6,7 +6,7 @@
  * keys, map keys, and display usage.
  */
 import * as assert from 'assert';
-import { normaliseDeviceId, toDeviceId } from '../../devices/identity/device-id';
+import { isFallbackPortDeviceId, normaliseDeviceId, toDeviceId } from '../../devices/identity/device-id';
 
 suite('device-id', () => {
   test('normaliseDeviceId trims and sanitises input', () => {
@@ -70,5 +70,10 @@ suite('device-id', () => {
     // Expected behavior: fallback format starts with 'port_' and contains a
     // normalised representation of the path.
     assert.strictEqual(id, 'port__dev_ttyUSB0');
+  });
+
+  test('isFallbackPortDeviceId detects temporary port-based ids', () => {
+    assert.strictEqual(isFallbackPortDeviceId('port__dev_ttyUSB0'), true);
+    assert.strictEqual(isFallbackPortDeviceId('chip-123'), false);
   });
 });

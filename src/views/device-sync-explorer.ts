@@ -56,6 +56,7 @@ import { createWebviewNonce, escapeJsonForHtml, getWebviewAssetUri, loadWebviewT
 import { syncStateStore } from '../sync/sync-state-store';
 import { emitPyDeviceLoggerEvent } from '../logging/pydevice-logger-events';
 import { showErrorMessage, showInformationMessage, showWarningMessage, t } from '../utils/i18n';
+import { isFallbackPortDeviceId } from '../devices/identity/device-id';
 
 const syncViewId = 'mekatrol.pydevice.syncExplorer';
 const commandRefreshId = 'mekatrol.pydevice.refreshsyncview';
@@ -401,7 +402,7 @@ class DeviceSyncModel {
     // connectBoardForPath promotes the ID once the device responds, at which
     // point a notifyStateChanged fires and the tree is refreshed with the real ID.
     connected
-      .filter((item) => !item.deviceId.startsWith('port_'))
+      .filter((item) => !isFallbackPortDeviceId(item.deviceId))
       .forEach((item) => this.knownDeviceIds.add(item.deviceId));
 
     for (const deviceId of this.knownDeviceIds) {
@@ -623,7 +624,7 @@ class DeviceSyncModel {
       return this.selectedNode.data.deviceId;
     }
 
-    return this.activeDeviceId ?? getConnectedPyDevices().find((item) => !item.deviceId.startsWith('port_'))?.deviceId;
+    return this.activeDeviceId ?? getConnectedPyDevices().find((item) => !isFallbackPortDeviceId(item.deviceId))?.deviceId;
   }
 
   private async ensureActiveDevice(target?: DeviceTarget): Promise<string | undefined> {
@@ -5643,7 +5644,7 @@ class DeviceSyncModel {
     direction: 'to_device' | 'from_device'
   ): SyncAction | undefined {
     if (row.status === 'match') {
-      return undefined;
+      return row.isDirectory ? undefined : 'modify';
     }
     if (row.status === 'mismatch') {
       return 'modify';

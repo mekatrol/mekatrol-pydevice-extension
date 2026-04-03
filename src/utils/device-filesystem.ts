@@ -9,6 +9,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PyDeviceConnection } from '../devices/py-device';
+import { isFallbackPortDeviceId } from '../devices/identity/device-id';
 import { deviceMirrorDirectoryName } from './configuration';
 
 const beginMarker = '__PYDEVICE_BEGIN__';
@@ -400,6 +401,10 @@ export const syncDeviceToMirror = async (board: PyDeviceConnection, deviceId: st
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
     return;
+  }
+
+  if (isFallbackPortDeviceId(deviceId)) {
+    throw new Error(`Refusing to create a device mirror for temporary port-based device ID ${deviceId}`);
   }
 
   const mirrorRoot = path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName, deviceId);

@@ -11,7 +11,7 @@ import { listAllSerialPorts, listSerialDevices } from '../utils/serial-port';
 import { autoReconnectDevicesCacheKey, getWorkspaceCacheValue, setWorkspaceCacheValue } from '../utils/workspace-cache';
 import { ConnectedPyDeviceRegistry, ConnectedPyDeviceState, ConnectedPyDeviceSnapshot } from '../devices/registry/connected-py-device-registry';
 import { ReconnectStateStore } from '../devices/registry/reconnect-state-store';
-import { toDeviceId } from '../devices/identity/device-id';
+import { isFallbackPortDeviceId, toDeviceId } from '../devices/identity/device-id';
 import { SerialDeviceProber } from '../devices/discovery/serial-device-prober';
 import { setPyDeviceControllerPortProbingEnabled } from '../devices/controller/py-device-controller-singleton';
 import { getDeviceNames, loadConfiguration, updateDeviceName } from '../utils/configuration';
@@ -512,12 +512,19 @@ const connectBoardForPath = async (
     await reconnectStateStore.addReconnectDevicePath(board.device);
     notifyStateChanged();
 
-    try {
-      await syncDeviceToMirror(board, state.deviceId);
-      outputChannelLogger.log(`Device mirror synced for ${state.deviceId}.`, false);
-    } catch (error: unknown) {
-      const reason = error instanceof Error ? error.message : String(error);
-      outputChannelLogger.log(`Device mirror sync failed for ${state.deviceId}: ${reason}`, true);
+    if (isFallbackPortDeviceId(state.deviceId)) {
+      outputChannelLogger.log(
+        `Skipping device mirror sync for temporary port-based device ID ${state.deviceId}.`,
+        false
+      );
+    } else {
+      try {
+        await syncDeviceToMirror(board, state.deviceId);
+        outputChannelLogger.log(`Device mirror synced for ${state.deviceId}.`, false);
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : String(error);
+        outputChannelLogger.log(`Device mirror sync failed for ${state.deviceId}: ${reason}`, true);
+      }
     }
 
     const applyRefreshedRuntimeInfo = async (refreshedRuntimeInfo: PyDeviceRuntimeInfo): Promise<void> => {
@@ -553,7 +560,7 @@ const connectBoardForPath = async (
       notifyStateChanged();
     };
 
-    const needsIdentityPromotion = state.deviceId.startsWith('port_');
+    const needsIdentityPromotion = isFallbackPortDeviceId(state.deviceId);
     if (needsIdentityPromotion) {
       void (async () => {
         let lastError: unknown;

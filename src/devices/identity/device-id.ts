@@ -28,3 +28,8 @@ export const toDeviceId = (devicePath: string, runtimeInfo?: PyDeviceRuntimeInfo
 
   return `port_${normaliseDeviceId(devicePath)}`;
 };
+
+/**
+ * Returns true when the device id is only a temporary serial-port fallback.
+ */
+export const isFallbackPortDeviceId = (deviceId: string): boolean => deviceId.startsWith('port_');

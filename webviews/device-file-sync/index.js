@@ -57,7 +57,7 @@ if (syncBusyText) {
   syncBusyText.textContent = msg('syncing', 'Syncing...');
 }
 
-const isActionable = (row) => row.status !== 'match';
+const isActionable = (row) => !row.isDirectory || row.status !== 'match';
 const isChecked = (row) => {
   if (!isActionable(row)) {
     return false;
@@ -71,14 +71,11 @@ const isChecked = (row) => {
 const selectedRowIds = () => rows.filter((row) => isActionable(row) && isChecked(row)).map((row) => row.id);
 
 const updateActionState = () => {
-  const hasDifferences = rows.some((row) => row.status !== 'match');
   const hasSelection = selectedRowIds().length > 0;
   if (syncToDeviceButton) {
-    syncToDeviceButton.style.display = hasDifferences ? 'inline-block' : 'none';
     syncToDeviceButton.disabled = syncBusy || !hasSelection;
   }
   if (syncFromDeviceButton) {
-    syncFromDeviceButton.style.display = hasDifferences ? 'inline-block' : 'none';
     syncFromDeviceButton.disabled = syncBusy || !hasSelection;
   }
   if (closeButton) {
