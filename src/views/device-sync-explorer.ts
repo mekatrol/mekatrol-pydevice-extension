@@ -5,7 +5,7 @@
  */
 import { Buffer } from 'buffer';
 import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
+import { promises as fs, statSync } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
@@ -98,6 +98,7 @@ const hasMappedHostMappingsContextKey = 'mekatrol.pydevice.hasMappedHostMappings
 const mappedDeviceIdsContextKey = 'mekatrol.pydevice.mappedDeviceIds';
 const connectedDeviceIdsContextKey = 'mekatrol.pydevice.connectedDeviceIds';
 const deviceIdsWithLibrariesContextKey = 'mekatrol.pydevice.deviceIdsWithLibraries';
+const excludedMirrorResourcePathsContextKey = 'mekatrol.pydevice.excludedMirrorResourcePaths';
 const explorerHasWorkspaceContextKey = 'mekatrol.pydevice.explorerHasWorkspace';
 const explorerHasConfigurationContextKey = 'mekatrol.pydevice.explorerHasConfiguration';
 const explorerHasSyncFolderContextKey = 'mekatrol.pydevice.explorerHasSyncFolder';
@@ -285,6 +286,39 @@ class DeviceSyncModel {
     await vscode.commands.executeCommand('setContext', mappedDeviceIdsContextKey, this.getMappedHostDeviceIds());
     await vscode.commands.executeCommand('setContext', connectedDeviceIdsContextKey, this.getConnectedDeviceIds());
     await vscode.commands.executeCommand('setContext', deviceIdsWithLibrariesContextKey, this.getDeviceIdsWithLibraries());
+    await vscode.commands.executeCommand('setContext', excludedMirrorResourcePathsContextKey, this.getExcludedMirrorResourcePaths());
+  }
+
+  private getExcludedMirrorResourcePaths(): string[] {
+    if (!this.workspaceFolder) {
+      return [];
+    }
+
+    const workspaceRoot = this.workspaceFolder.uri.fsPath;
+    const paths = new Set<string>();
+
+    for (const [deviceId, excludedPaths] of Object.entries(this.deviceSyncExcludedPaths)) {
+      if (excludedPaths.size === 0) {
+        continue;
+      }
+
+      const deviceRoot = path.join(workspaceRoot, deviceMirrorDirectoryName, deviceId);
+      const deviceEntries = this.deviceEntriesByDeviceId.get(deviceId) ?? [];
+
+      for (const excludedPath of excludedPaths) {
+        paths.add(path.join(deviceRoot, ...excludedPath.split('/')));
+      }
+
+      for (const entry of deviceEntries) {
+        const relativePath = toRelativePath(entry.relativePath);
+        if (!relativePath || !this.isPathExcludedFromSync(relativePath, deviceId)) {
+          continue;
+        }
+        paths.add(path.join(deviceRoot, ...relativePath.split('/')));
+      }
+    }
+
+    return [...paths].sort((a, b) => a.localeCompare(b));
   }
 
   private logSyncEvent(action: string, message: string, details?: Record<string, unknown>): void {
@@ -558,7 +592,7 @@ class DeviceSyncModel {
     this.syncRootPath = this.syncRootByDeviceId.get(deviceId);
   }
 
-  private getMirrorDeviceIdFromUri(uri?: vscode.Uri): string | undefined {
+  private getMirrorTargetFromUri(uri?: vscode.Uri): { deviceId: string; relativePath: string; isDirectory: boolean } | undefined {
     if (!uri || uri.scheme !== 'file') {
       return undefined;
     }
@@ -570,7 +604,7 @@ class DeviceSyncModel {
 
     const segments = relativePath.split('/');
     const mirrorSegments = toRelativePath(deviceMirrorDirectoryName).split('/');
-    if (segments.length !== mirrorSegments.length + 1) {
+    if (segments.length < mirrorSegments.length + 1) {
       return undefined;
     }
 
@@ -580,8 +614,30 @@ class DeviceSyncModel {
       }
     }
 
-    const deviceId = segments[segments.length - 1]?.trim();
-    return deviceId && deviceId.length > 0 ? deviceId : undefined;
+    const deviceId = segments[mirrorSegments.length]?.trim();
+    if (!deviceId) {
+      return undefined;
+    }
+
+    const targetRelativePath = toRelativePath(segments.slice(mirrorSegments.length + 1).join('/'));
+    let isDirectory = targetRelativePath.length === 0;
+    if (!isDirectory) {
+      try {
+        isDirectory = statSync(uri.fsPath).isDirectory();
+      } catch {
+        isDirectory = false;
+      }
+    }
+
+    return {
+      deviceId,
+      relativePath: targetRelativePath,
+      isDirectory
+    };
+  }
+
+  private getMirrorDeviceIdFromUri(uri?: vscode.Uri): string | undefined {
+    return this.getMirrorTargetFromUri(uri)?.deviceId;
   }
 
   private isDeviceTargetUri(target?: DeviceTarget): target is vscode.Uri {
@@ -2547,18 +2603,23 @@ class DeviceSyncModel {
     }
 
     if (this.isDeviceTargetUri(target)) {
-      const deviceId = this.getMirrorDeviceIdFromUri(target);
-      if (deviceId) {
+      const mirrorTarget = this.getMirrorTargetFromUri(target);
+      if (mirrorTarget) {
+        const label = mirrorTarget.relativePath
+          ? path.posix.basename(mirrorTarget.relativePath)
+          : this.getDeviceDisplayName(mirrorTarget.deviceId);
         return new SyncNode(
           {
             side: 'device',
-            relativePath: '',
-            isDirectory: true,
-            deviceId,
-            isDeviceIdNode: true
+            relativePath: mirrorTarget.relativePath,
+            isDirectory: mirrorTarget.isDirectory,
+            deviceId: mirrorTarget.deviceId,
+            isDeviceIdNode: mirrorTarget.relativePath.length === 0
           },
-          this.getDeviceDisplayName(deviceId),
-          vscode.TreeItemCollapsibleState.Collapsed
+          label,
+          mirrorTarget.isDirectory
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None
         );
       }
     }
@@ -2948,6 +3009,7 @@ class DeviceSyncModel {
     this.deviceSyncExcludedPaths = Object.fromEntries(
       Object.entries(getDeviceSyncExcludedPaths(updated)).map(([id, relativePaths]) => [id, new Set(relativePaths)])
     );
+    await this.updateMappingContextKeys();
   }
 
   private async removeSyncExclusionsForDeletedDevicePath(deviceId: string, deletedPath: string, includeDescendants: boolean): Promise<void> {
@@ -2978,6 +3040,7 @@ class DeviceSyncModel {
     this.deviceSyncExcludedPaths = Object.fromEntries(
       Object.entries(getDeviceSyncExcludedPaths(updated)).map(([id, relativePaths]) => [id, new Set(relativePaths)])
     );
+    await this.updateMappingContextKeys();
   }
 
   private isNodeExcludedFromSync(node: SyncNode | undefined): boolean {
@@ -3037,7 +3100,7 @@ class DeviceSyncModel {
     return hostFileExists ? 'available' : 'hostMissing';
   }
 
-  async excludeDeviceFileFromSync(node?: SyncNode): Promise<void> {
+  async excludeDeviceFileFromSync(node?: DeviceTarget): Promise<void> {
     const targetNode = this.resolveTargetNode(node);
     await this.ensureActiveDevice(targetNode);
     if (!targetNode || targetNode.data.isRoot || targetNode.data.isIndicator) {
@@ -3062,7 +3125,11 @@ class DeviceSyncModel {
       return;
     }
 
-    await updateDeviceSyncExclusion(deviceId, relativePath, true);
+    const updated = await updateDeviceSyncExclusion(deviceId, relativePath, true);
+    this.deviceSyncExcludedPaths = Object.fromEntries(
+      Object.entries(getDeviceSyncExcludedPaths(updated)).map(([id, relativePaths]) => [id, new Set(relativePaths)])
+    );
+    await this.updateMappingContextKeys();
     await this.refresh(false);
 
     const msg = `Excluded from sync for ${this.getDeviceDisplayNameWithId(deviceId)}: /${relativePath}`;
@@ -3070,7 +3137,7 @@ class DeviceSyncModel {
     outputChannelLogger.log(msg, true);
   }
 
-  async removeDeviceFileFromSyncExclusion(node?: SyncNode): Promise<void> {
+  async removeDeviceFileFromSyncExclusion(node?: DeviceTarget): Promise<void> {
     const targetNode = this.resolveTargetNode(node);
     await this.ensureActiveDevice(targetNode);
     if (!targetNode || targetNode.data.isRoot || targetNode.data.isIndicator) {
@@ -3096,7 +3163,11 @@ class DeviceSyncModel {
       return;
     }
 
-    await updateDeviceSyncExclusion(deviceId, exclusionPath, false);
+    const updated = await updateDeviceSyncExclusion(deviceId, exclusionPath, false);
+    this.deviceSyncExcludedPaths = Object.fromEntries(
+      Object.entries(getDeviceSyncExcludedPaths(updated)).map(([id, relativePaths]) => [id, new Set(relativePaths)])
+    );
+    await this.updateMappingContextKeys();
     await this.refresh(false);
 
     const msg = `Removed sync exclusion for ${this.getDeviceDisplayNameWithId(deviceId)}: /${exclusionPath}`;

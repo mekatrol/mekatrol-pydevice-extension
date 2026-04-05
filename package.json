@@ -478,6 +478,16 @@
           "command": "mekatrol.pydevice.viewdeviceinfo",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+$/",
           "group": "pydevice@11"
+        },
+        {
+          "command": "mekatrol.pydevice.excludedevicefilefromsync",
+          "when": "resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+[\\\\/].+$/ && !(resourcePath in mekatrol.pydevice.excludedMirrorResourcePaths)",
+          "group": "pydevice@12"
+        },
+        {
+          "command": "mekatrol.pydevice.removedevicefilefromsyncexclusion",
+          "when": "resourcePath =~ /(^|[\\\\/])\\.pydevice[\\\\/]\\.device-mirror[\\\\/][^\\\\/]+[\\\\/].+$/ && resourcePath in mekatrol.pydevice.excludedMirrorResourcePaths",
+          "group": "pydevice@13"
         }
       ]
     },
