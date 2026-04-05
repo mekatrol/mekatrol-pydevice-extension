@@ -10,7 +10,12 @@ import { pyDeviceTimeoutSettings } from '../constants/timeout-constants';
 import { createWebviewNonce, escapeJsonForHtml, getWebviewAssetUri, loadWebviewTemplate } from '../utils/webview-template';
 import { configurationFileName, getDeviceNames, loadConfiguration, onPyDeviceConfigurationUpdated } from '../utils/configuration';
 import { getTimeoutSettingMs } from '../utils/timeout-settings';
-import { getWorkspaceCacheValue, setWorkspaceCacheValue } from '../utils/workspace-cache';
+import {
+  getWorkspaceCacheValue,
+  isWorkspaceCacheFileUri,
+  refreshWorkspaceCacheContext,
+  setWorkspaceCacheValue
+} from '../utils/workspace-cache';
 import { t } from '../utils/i18n';
 import { pyDeviceProtocolText, pyDeviceReplControlActions } from '../devices/connection/py-device-commands';
 
@@ -656,6 +661,10 @@ export const initReplView = (context: vscode.ExtensionContext): void => {
   const provider = new ReplViewProvider(context);
   replViewProviderInstance = provider;
 
+  const refreshVisibility = async (): Promise<void> => {
+    await refreshWorkspaceCacheContext();
+  };
+
   context.subscriptions.push(
     provider,
     vscode.window.registerWebviewViewProvider(replViewId, provider, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -667,6 +676,33 @@ export const initReplView = (context: vscode.ExtensionContext): void => {
     }),
     vscode.commands.registerCommand(clearReplHistoryCommandId, () => {
       provider.clearActiveHistory();
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void refreshVisibility();
+    }),
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      if (!isWorkspaceCacheFileUri(document.uri)) {
+        return;
+      }
+      void refreshVisibility();
+    }),
+    vscode.workspace.onDidCreateFiles((event) => {
+      if (!event.files.some((file) => isWorkspaceCacheFileUri(file))) {
+        return;
+      }
+      void refreshVisibility();
+    }),
+    vscode.workspace.onDidDeleteFiles((event) => {
+      if (!event.files.some((file) => isWorkspaceCacheFileUri(file))) {
+        return;
+      }
+      void refreshVisibility();
+    }),
+    vscode.workspace.onDidRenameFiles((event) => {
+      if (!event.files.some((file) => isWorkspaceCacheFileUri(file.oldUri) || isWorkspaceCacheFileUri(file.newUri))) {
+        return;
+      }
+      void refreshVisibility();
     })
   );
 
@@ -675,4 +711,6 @@ export const initReplView = (context: vscode.ExtensionContext): void => {
       replViewProviderInstance = undefined;
     }
   }));
+
+  void refreshVisibility();
 };

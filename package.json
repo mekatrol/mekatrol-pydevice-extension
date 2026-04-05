@@ -237,7 +237,8 @@
         {
           "id": "mekatrol.pydevice.replView",
           "name": "REPL",
-          "type": "webview"
+          "type": "webview",
+          "when": "mekatrol.pydevice.hasWorkspaceCache"
         }
       ]
     },

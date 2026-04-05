@@ -35,7 +35,7 @@ import {
   updateDeviceHostFolderMapping,
   updateDeviceSyncExclusion
 } from '../utils/configuration';
-import { createDefaultWorkspaceCacheFile, workspaceCacheFileName } from '../utils/workspace-cache';
+import { createDefaultWorkspaceCacheFile, refreshWorkspaceCacheContext, workspaceCacheFileName } from '../utils/workspace-cache';
 import {
   createDeviceDirectory,
   deleteDevicePath,
@@ -7284,6 +7284,7 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
     } else {
       existingItems.push(workspaceCacheFileName);
     }
+    await refreshWorkspaceCacheContext();
 
     const summary = [
       createdItems.length > 0 ? `Created: ${createdItems.join(', ')}` : undefined,

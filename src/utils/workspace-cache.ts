@@ -8,6 +8,7 @@ import { pyDeviceTimeoutSettings } from '../constants/timeout-constants';
 import { deviceMirrorDirectoryName, pydeviceDirectoryName } from './configuration';
 
 export const workspaceCacheFileName = `${pydeviceDirectoryName}/settings.json`;
+export const workspaceCacheExistsContextKey = 'mekatrol.pydevice.hasWorkspaceCache';
 export const autoReconnectDevicesCacheKey = 'autoReconnectDevices';
 export const loggerAutoStartCacheKey = 'loggerAutoStart';
 
@@ -45,6 +46,31 @@ const getWorkspaceFileUri = (fileName: string): vscode.Uri | undefined => {
   return workspaceUri.with({
     path: posix.join(workspaceUri.path, fileName)
   });
+};
+
+export const isWorkspaceCacheFileUri = (uri: vscode.Uri): boolean => {
+  const cacheUri = getWorkspaceFileUri(workspaceCacheFileName);
+  return !!cacheUri && cacheUri.scheme === uri.scheme && cacheUri.path === uri.path;
+};
+
+export const workspaceCacheFileExists = async (): Promise<boolean> => {
+  const fileUri = getWorkspaceFileUri(workspaceCacheFileName);
+  if (!fileUri) {
+    return false;
+  }
+
+  try {
+    await vscode.workspace.fs.stat(fileUri);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const refreshWorkspaceCacheContext = async (): Promise<boolean> => {
+  const exists = await workspaceCacheFileExists();
+  await vscode.commands.executeCommand('setContext', workspaceCacheExistsContextKey, exists);
+  return exists;
 };
 
 const loadCacheFromFile = async (fileName: string): Promise<WorkspaceCache | undefined> => {
