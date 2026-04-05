@@ -675,6 +675,4 @@ export const initReplView = (context: vscode.ExtensionContext): void => {
       replViewProviderInstance = undefined;
     }
   }));
-
-  provider.reveal();
 };
