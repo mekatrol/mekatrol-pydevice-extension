@@ -82,7 +82,7 @@ export const activate = async (context: vscode.ExtensionContext) => {
   };
 
   const fileWatcher = new FileWatcher({
-    excludedPaths: ['.vscode', '.pydevice']
+    excludedPaths: ['.vscode', '.pydevice', 'device-mirror']
   });
   fileWatcherOutputLogSubscription = fileWatcher.onDidLog((entry) => {
     outputChannelLogger.log(entry.message, entry.isError);

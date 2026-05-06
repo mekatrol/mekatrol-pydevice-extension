@@ -15,7 +15,7 @@ import { isFallbackPortDeviceId, toDeviceId } from '../devices/identity/device-i
 import { SerialDeviceProber } from '../devices/discovery/serial-device-prober';
 import { setPyDeviceControllerPortProbingEnabled } from '../devices/controller/py-device-controller-singleton';
 import { getDeviceNames, loadConfiguration, updateDeviceName } from '../utils/configuration';
-import { removeDeviceMirror, syncDeviceToMirror } from '../utils/device-filesystem';
+import { DeviceMirrorLocationConflictError, removeDeviceMirror, syncDeviceToMirror } from '../utils/device-filesystem';
 import { createVscodePyDeviceHostServices } from '../devices/connection/py-device-vscode-host-services';
 import {
   ConnectRow,
@@ -524,6 +524,9 @@ const connectBoardForPath = async (
       } catch (error: unknown) {
         const reason = error instanceof Error ? error.message : String(error);
         outputChannelLogger.log(`Device mirror sync failed for ${state.deviceId}: ${reason}`, true);
+        if (error instanceof DeviceMirrorLocationConflictError) {
+          showErrorMessage(error.message);
+        }
       }
     }
 
@@ -552,6 +555,9 @@ const connectBoardForPath = async (
             } catch (error: unknown) {
               const reason = error instanceof Error ? error.message : String(error);
               outputChannelLogger.log(`Device mirror sync failed for promoted device ID ${promotedDeviceId}: ${reason}`, true);
+              if (error instanceof DeviceMirrorLocationConflictError) {
+                showErrorMessage(error.message);
+              }
             }
           })();
         }

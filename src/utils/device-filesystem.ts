@@ -15,6 +15,18 @@ import { deviceMirrorDirectoryName } from './configuration';
 const beginMarker = '__PYDEVICE_BEGIN__';
 const endMarker = '__PYDEVICE_END__';
 
+export class DeviceMirrorLocationConflictError extends Error {
+  constructor(
+    readonly targetPath: string,
+    readonly itemType: 'file' | 'folder'
+  ) {
+    super(
+      `Cannot display device code because a ${itemType} already exists at the location '${targetPath}'. Please rename that ${itemType} to something else and relaunch VS Code.`
+    );
+    this.name = 'DeviceMirrorLocationConflictError';
+  }
+}
+
 export interface FileEntry {
   relativePath: string;
   isDirectory: boolean;
@@ -31,6 +43,41 @@ const toPosixRelative = (input: string): string => {
 const toDeviceAbsolutePath = (relativePath: string): string => {
   const clean = toPosixRelative(relativePath);
   return clean.length === 0 ? '/' : `/${clean}`;
+};
+
+const getWorkspaceMirrorRoot = (): string | undefined => {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return undefined;
+  }
+
+  return path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName);
+};
+
+export const ensureManagedMirrorRootAt = async (mirrorRoot: string): Promise<string> => {
+  try {
+    const stat = await fs.stat(mirrorRoot);
+    if (!stat.isDirectory()) {
+      throw new DeviceMirrorLocationConflictError(mirrorRoot, 'file');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      throw error;
+    }
+
+    await fs.mkdir(mirrorRoot, { recursive: true });
+  }
+
+  return mirrorRoot;
+};
+
+export const ensureManagedMirrorRoot = async (): Promise<string | undefined> => {
+  const mirrorRoot = getWorkspaceMirrorRoot();
+  if (!mirrorRoot) {
+    return undefined;
+  }
+
+  return ensureManagedMirrorRootAt(mirrorRoot);
 };
 
 const wrapScript = (body: string): string => {
@@ -397,9 +444,32 @@ export const buildSyncStateMap = (
   return status;
 };
 
+const shouldRewriteMirrorFile = (
+  mirrorEntry: FileEntry | undefined,
+  deviceEntry: FileEntry
+): boolean => {
+  if (!mirrorEntry || mirrorEntry.isDirectory !== deviceEntry.isDirectory) {
+    return true;
+  }
+
+  if (deviceEntry.isDirectory) {
+    return false;
+  }
+
+  if (mirrorEntry.sha1 && deviceEntry.sha1) {
+    return mirrorEntry.sha1 !== deviceEntry.sha1;
+  }
+
+  if (typeof mirrorEntry.size === 'number' && typeof deviceEntry.size === 'number') {
+    return mirrorEntry.size !== deviceEntry.size;
+  }
+
+  return true;
+};
+
 export const syncDeviceToMirror = async (board: PyDeviceConnection, deviceId: string): Promise<void> => {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0) {
+  const mirrorWorkspaceRoot = await ensureManagedMirrorRoot();
+  if (!mirrorWorkspaceRoot) {
     return;
   }
 
@@ -407,35 +477,60 @@ export const syncDeviceToMirror = async (board: PyDeviceConnection, deviceId: st
     throw new Error(`Refusing to create a device mirror for temporary port-based device ID ${deviceId}`);
   }
 
-  const mirrorRoot = path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName, deviceId);
-
-  await fs.rm(mirrorRoot, { recursive: true, force: true });
+  const mirrorRoot = path.join(mirrorWorkspaceRoot, deviceId);
   await fs.mkdir(mirrorRoot, { recursive: true });
 
   const entries = await listDeviceEntries(board);
+  const mirrorEntries = await scanComputerSyncEntries(mirrorRoot);
+  const deviceEntryMap = new Map(entries.map((entry) => [entry.relativePath, entry]));
+  const mirrorEntryMap = new Map(mirrorEntries.map((entry) => [entry.relativePath, entry]));
+
+  const staleMirrorEntries = mirrorEntries
+    .filter((entry) => entry.relativePath.length > 0)
+    .filter((entry) => {
+      const deviceEntry = deviceEntryMap.get(entry.relativePath);
+      return !deviceEntry || deviceEntry.isDirectory !== entry.isDirectory;
+    })
+    .sort((a, b) => b.relativePath.length - a.relativePath.length);
+
+  for (const staleEntry of staleMirrorEntries) {
+    const stalePath = path.join(mirrorRoot, ...staleEntry.relativePath.split('/'));
+    await fs.rm(stalePath, { recursive: true, force: true });
+    mirrorEntryMap.delete(staleEntry.relativePath);
+  }
+
+  const deviceDirectories = entries
+    .filter((entry) => entry.isDirectory && entry.relativePath.length > 0)
+    .sort((a, b) => a.relativePath.split('/').length - b.relativePath.split('/').length);
+
+  for (const directoryEntry of deviceDirectories) {
+    const localPath = path.join(mirrorRoot, ...directoryEntry.relativePath.split('/'));
+    await fs.mkdir(localPath, { recursive: true });
+  }
 
   for (const entry of entries) {
-    if (entry.isDirectory) {
-      if (entry.relativePath === '') {
-        continue;
-      }
-      const localPath = path.join(mirrorRoot, ...entry.relativePath.split('/'));
-      await fs.mkdir(localPath, { recursive: true });
-    } else {
-      const localPath = path.join(mirrorRoot, ...entry.relativePath.split('/'));
-      await fs.mkdir(path.dirname(localPath), { recursive: true });
-      const content = await readDeviceFile(board, entry.relativePath);
-      await fs.writeFile(localPath, content);
+    if (entry.isDirectory || entry.relativePath.length === 0) {
+      continue;
     }
+
+    const existingMirrorEntry = mirrorEntryMap.get(entry.relativePath);
+    if (!shouldRewriteMirrorFile(existingMirrorEntry, entry)) {
+      continue;
+    }
+
+    const localPath = path.join(mirrorRoot, ...entry.relativePath.split('/'));
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    const content = await readDeviceFile(board, entry.relativePath);
+    await fs.writeFile(localPath, content);
   }
 };
 
 export const removeDeviceMirror = async (deviceId: string): Promise<void> => {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0) {
+  const mirrorWorkspaceRoot = getWorkspaceMirrorRoot();
+  if (!mirrorWorkspaceRoot) {
     return;
   }
 
-  const mirrorRoot = path.join(workspaceFolders[0].uri.fsPath, deviceMirrorDirectoryName, deviceId);
+  const mirrorRoot = path.join(mirrorWorkspaceRoot, deviceId);
   await fs.rm(mirrorRoot, { recursive: true, force: true });
 };

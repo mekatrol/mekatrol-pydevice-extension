@@ -8,7 +8,13 @@ import * as assert from 'assert';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { buildSyncStateMap, scanComputerSyncEntries, toRelativePath } from '../../utils/device-filesystem';
+import {
+  buildSyncStateMap,
+  DeviceMirrorLocationConflictError,
+  ensureManagedMirrorRootAt,
+  scanComputerSyncEntries,
+  toRelativePath
+} from '../../utils/device-filesystem';
 
 suite('device-filesystem utils', () => {
   test('toRelativePath normalises separators and trims slashes', () => {
@@ -102,6 +108,54 @@ suite('device-filesystem utils', () => {
 
     // Assert: function should not throw; it should return only the default root entry.
     assert.deepStrictEqual(entries, [{ relativePath: '', isDirectory: true }]);
+  });
+
+  test('ensureManagedMirrorRootAt rejects a pre-existing file at device-mirror root', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pydevice-mirror-file-'));
+    const mirrorRoot = path.join(workspaceRoot, 'device-mirror');
+
+    try {
+      await fs.writeFile(mirrorRoot, 'user content');
+      await assert.rejects(
+        () => ensureManagedMirrorRootAt(mirrorRoot),
+        (error: unknown) =>
+          error instanceof DeviceMirrorLocationConflictError &&
+          error.itemType === 'file' &&
+          error.message === `Cannot display device code because a file already exists at the location '${mirrorRoot}'. Please rename that file to something else and relaunch VS Code.`
+      );
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('ensureManagedMirrorRootAt accepts a pre-existing folder at device-mirror root', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pydevice-mirror-dir-'));
+    const mirrorRoot = path.join(workspaceRoot, 'device-mirror');
+
+    try {
+      await fs.mkdir(mirrorRoot, { recursive: true });
+      const reused = await ensureManagedMirrorRootAt(mirrorRoot);
+      assert.strictEqual(reused, mirrorRoot);
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('ensureManagedMirrorRootAt creates and reuses a mirror root', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pydevice-mirror-managed-'));
+    const mirrorRoot = path.join(workspaceRoot, 'device-mirror');
+
+    try {
+      const created = await ensureManagedMirrorRootAt(mirrorRoot);
+      assert.strictEqual(created, mirrorRoot);
+      const stat = await fs.stat(mirrorRoot);
+      assert.strictEqual(stat.isDirectory(), true);
+
+      const reused = await ensureManagedMirrorRootAt(mirrorRoot);
+      assert.strictEqual(reused, mirrorRoot);
+    } finally {
+      await fs.rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 });
 

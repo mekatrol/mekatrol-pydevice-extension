@@ -39,6 +39,8 @@ import { createDefaultWorkspaceCacheFile, refreshWorkspaceCacheContext, workspac
 import {
   createDeviceDirectory,
   deleteDevicePath,
+  DeviceMirrorLocationConflictError,
+  ensureManagedMirrorRoot,
   FileEntry,
   SyncState,
   buildSyncStateMap,
@@ -99,6 +101,7 @@ const mappedDeviceIdsContextKey = 'mekatrol.pydevice.mappedDeviceIds';
 const connectedDeviceIdsContextKey = 'mekatrol.pydevice.connectedDeviceIds';
 const deviceIdsWithLibrariesContextKey = 'mekatrol.pydevice.deviceIdsWithLibraries';
 const excludedMirrorResourcePathsContextKey = 'mekatrol.pydevice.excludedMirrorResourcePaths';
+const connectedMirrorFileResourcePathsContextKey = 'mekatrol.pydevice.connectedMirrorFileResourcePaths';
 const explorerHasWorkspaceContextKey = 'mekatrol.pydevice.explorerHasWorkspace';
 const explorerHasConfigurationContextKey = 'mekatrol.pydevice.explorerHasConfiguration';
 const explorerHasSyncFolderContextKey = 'mekatrol.pydevice.explorerHasSyncFolder';
@@ -287,6 +290,7 @@ class DeviceSyncModel {
     await vscode.commands.executeCommand('setContext', connectedDeviceIdsContextKey, this.getConnectedDeviceIds());
     await vscode.commands.executeCommand('setContext', deviceIdsWithLibrariesContextKey, this.getDeviceIdsWithLibraries());
     await vscode.commands.executeCommand('setContext', excludedMirrorResourcePathsContextKey, this.getExcludedMirrorResourcePaths());
+    await vscode.commands.executeCommand('setContext', connectedMirrorFileResourcePathsContextKey, this.getConnectedMirrorFileResourcePaths());
   }
 
   private getExcludedMirrorResourcePaths(): string[] {
@@ -312,6 +316,29 @@ class DeviceSyncModel {
       for (const entry of deviceEntries) {
         const relativePath = toRelativePath(entry.relativePath);
         if (!relativePath || !this.isPathExcludedFromSync(relativePath, deviceId)) {
+          continue;
+        }
+        paths.add(path.join(deviceRoot, ...relativePath.split('/')));
+      }
+    }
+
+    return [...paths].sort((a, b) => a.localeCompare(b));
+  }
+
+  private getConnectedMirrorFileResourcePaths(): string[] {
+    if (!this.workspaceFolder) {
+      return [];
+    }
+
+    const workspaceRoot = this.workspaceFolder.uri.fsPath;
+    const paths = new Set<string>();
+
+    for (const deviceId of this.getConnectedDeviceIds()) {
+      const deviceRoot = path.join(workspaceRoot, deviceMirrorDirectoryName, deviceId);
+      const deviceEntries = this.deviceEntriesByDeviceId.get(deviceId) ?? [];
+      for (const entry of deviceEntries) {
+        const relativePath = toRelativePath(entry.relativePath);
+        if (!relativePath || entry.isDirectory) {
           continue;
         }
         paths.add(path.join(deviceRoot, ...relativePath.split('/')));
@@ -405,6 +432,15 @@ class DeviceSyncModel {
       this.onDidChangeDataEmitter.fire();
       return;
     }
+    try {
+      await ensureManagedMirrorRoot();
+    } catch (error) {
+      if (error instanceof DeviceMirrorLocationConflictError) {
+        showErrorMessage(error.message);
+      } else {
+        throw error;
+      }
+    }
     const config = await loadConfiguration();
     this.deviceHostFolderMappings = getDeviceHostFolderMappings(config);
     this.deviceLibraryFolderMappings = getDeviceLibraryFolderMappings(config);
@@ -420,7 +456,6 @@ class DeviceSyncModel {
       Object.entries(getDeviceSyncExcludedPaths(config)).map(([deviceId, relativePaths]) => [deviceId, new Set(relativePaths)])
     );
     this.mappableHostFolders = await this.getMappableHostFolders();
-    await this.updateMappingContextKeys();
     this.knownDeviceIds = new Set([
       ...Object.keys(this.deviceHostFolderMappings),
       ...Object.keys(this.deviceLibraryFolderMappings),
@@ -485,6 +520,7 @@ class DeviceSyncModel {
     this.unmappedHostEntries = hostRootPath
       ? await scanComputerSyncEntries(hostRootPath)
       : [{ relativePath: '', isDirectory: true }];
+    await this.updateMappingContextKeys();
     this.lastRefreshError = undefined;
     this.onDidChangeDataEmitter.fire();
     } catch (error) {
@@ -511,10 +547,13 @@ class DeviceSyncModel {
       return [];
     }
     try {
-      const excludedFolderName = toRelativePath(configurationFileName).split('/')[0];
+      const excludedFolderNames = new Set([
+        toRelativePath(configurationFileName).split('/')[0],
+        toRelativePath(deviceMirrorDirectoryName)
+      ]);
       const children = await fs.readdir(syncRootPath, { withFileTypes: true });
       return children
-        .filter((child) => child.isDirectory() && toRelativePath(child.name) !== excludedFolderName)
+        .filter((child) => child.isDirectory() && !excludedFolderNames.has(toRelativePath(child.name)))
         .map((child) => toRelativePath(child.name))
         .sort((a, b) => a.localeCompare(b));
     } catch {
@@ -653,8 +692,11 @@ class DeviceSyncModel {
       return false;
     }
 
-    const excludedFolder = toRelativePath(configurationFileName).split('/')[0];
-    return normalised !== excludedFolder && !normalised.startsWith(`${excludedFolder}/`);
+    const excludedFolders = [
+      toRelativePath(configurationFileName).split('/')[0],
+      toRelativePath(deviceMirrorDirectoryName)
+    ];
+    return excludedFolders.every((excludedFolder) => normalised !== excludedFolder && !normalised.startsWith(`${excludedFolder}/`));
   }
 
   private pathReferencesPydeviceFolder(targetPath: string): boolean {
@@ -962,7 +1004,15 @@ class DeviceSyncModel {
   }
 
   private async refreshDeviceMirror(deviceId: string, board: NonNullable<ReturnType<typeof getConnectedPyDevice>>): Promise<void> {
-    await syncDeviceToMirror(board, deviceId);
+    try {
+      await syncDeviceToMirror(board, deviceId);
+    } catch (error) {
+      if (error instanceof DeviceMirrorLocationConflictError) {
+        showErrorMessage(error.message);
+        return;
+      }
+      throw error;
+    }
   }
 
   private async syncFromDeviceForDeviceNode(deviceId: string): Promise<void> {
@@ -1884,11 +1934,11 @@ class DeviceSyncModel {
     await this.pullDeviceNodeAndOpen(quickPickNode, options);
   }
 
-  async syncFileWithComputer(node?: SyncNode): Promise<void> {
+  async syncFileWithComputer(target?: DeviceTarget): Promise<void> {
     this.logSyncEvent('single-file-sync-diff-requested', 'Sync file diff (device/computer) requested.', {
-      hasNode: !!node
+      hasNode: !!target
     });
-    const targetNode = this.resolveTargetNode(node);
+    const targetNode = this.resolveTargetNode(target);
     await this.ensureActiveDevice(targetNode);
     if (targetNode) {
       await this.openDeviceDiff(targetNode);
@@ -4347,7 +4397,7 @@ class DeviceSyncModel {
 
   getDeviceUriSegment(deviceId: string): string {
     // Keep the backing URI segment stable so display names do not leak into
-    // `.pydevice/.device-mirror` paths or other filesystem-backed locations.
+    // `device-mirror` paths or other filesystem-backed locations.
     return deviceId;
   }
 
@@ -7440,7 +7490,9 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   context.subscriptions.push(
     vscode.commands.registerCommand(commandOpenDeviceFileFromTreeId, async (node?: SyncNode) => model.openDeviceFile(node, { explorerClick: true }))
   );
-  context.subscriptions.push(vscode.commands.registerCommand(commandSyncFileWithComputerId, async (node?: SyncNode) => model.syncFileWithComputer(node)));
+  context.subscriptions.push(
+    vscode.commands.registerCommand(commandSyncFileWithComputerId, async (target?: SyncNode | vscode.Uri) => model.syncFileWithComputer(target))
+  );
   context.subscriptions.push(vscode.commands.registerCommand(commandOpenSyncFilesId, async (target?: SyncNode | vscode.Uri) => model.openSyncFiles(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandViewDeviceInfoId, async (target?: SyncNode | vscode.Uri) => model.viewDeviceInfo(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandCreateSyncFileId, async (node?: SyncNode) => model.createSyncFile(node)));
