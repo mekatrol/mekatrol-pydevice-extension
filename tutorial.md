@@ -1,6 +1,6 @@
 # Tutorial
 
-The following tutorial helps understand the variaous functions within this vscode extension. Following from the start to end gives the best overview for new starters.
+The following tutorial helps explain the main functions within this VS Code extension. Following it from start to end gives the best overview for new starters.
 
 ## How it works
 
@@ -28,25 +28,29 @@ A simple example might look like this:
 
 ```text
 my-project/
-|-- .pydevice-config
-|-- .pydevice-cache
-`-- devices/
-    |-- sensor-01/
-    |   |-- main.py
-    |   `-- lib/
-    `-- sensor-02/
-    |   |-- main.py
-    |   `-- lib/
-    `-- switch-01/
-        |-- main.py
-        `-- lib/
+|-- .pydevice/
+|   |-- config.json
+|   `-- settings.json
+|-- device-mirror/
+|   |-- sensor-01/
+|   |   |-- main.py
+|   |   `-- lib/
+|   |-- sensor-02/
+|   |   |-- main.py
+|   |   `-- lib/
+|   `-- switch-01/
+|       |-- main.py
+|       `-- lib/
+`-- shared-libraries/
+    `-- wifi/
 ```
 
 What each part is for:
 
-- `devices/` (or any folders you choose): these are the local folders your devices map to.
-- `.pydevice-config`: shared project settings. This should usually be committed so other developers get the same workspace setup. 
-- `.pydevice-cache`: local developer cache/settings. This is for user-specific preferences and usually isn't shared.
+- `.pydevice/config.json`: shared project settings. This stores device names, host folder mappings, library folders, and sync exclusions.
+- `.pydevice/settings.json`: local developer cache/settings. This stores reconnect state, logger autostart, REPL history, and timeout values.
+- `device-mirror/`: the managed mirror root where device-backed files are represented in the workspace.
+- Other folders, such as `shared-libraries/`, can be mapped to device library roots.
 
 ## Open and initialise workspace
 
@@ -76,7 +80,7 @@ When it is done, your workspace should look like this:
 
 ![Initialised Workspace](images/initialised-browser.png)
 
-> IMPORTANT NOTE: If you picked a workspacefolder that already has files and folders then you will see those as well (they are not deleted or modified).
+> IMPORTANT NOTE: If you picked a workspace folder that already has files and folders, you will see those as well. They are not deleted or modified.
 
 ## Connect devices
 

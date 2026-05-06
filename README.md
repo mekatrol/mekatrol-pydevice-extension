@@ -16,7 +16,7 @@ Mekatrol PyDevice is a VS Code extension for developing against Python devices w
 
 ## Tutorial
 
-Follow the [tutorial](./tutorial.md) to help understand the variaous functions within this vscpode extension.
+Follow the [tutorial](./tutorial.md) to understand the main functions within this VS Code extension.
 
 ## Screenshots
 
@@ -174,6 +174,14 @@ This extension contributes these main settings:
 - `mekatrol.pydevice.verboseReplTransportLogs`: Enable low-level REPL transport logging.
 - `mekatrol.pydevice.deviceFileOpenWaitForConnectionMs`: Wait time before device file open/save fails.
 - `mekatrol.pydevice.replHistoryLimit`: Per-device REPL history length.
+- `mekatrol.pydevice.serialPortOperationTimeoutMs`: Serial open/close timeout for connect, probe, and disconnect operations.
+- `mekatrol.pydevice.serialPortAggressiveRecoveryProbeTimeoutMs`: Recovery probe timeout after connection failures.
+- `mekatrol.pydevice.pythonProbeRuntimeInfoTimeoutMs`: Lightweight runtime probing timeout.
+- `mekatrol.pydevice.pythonGetRuntimeInfoTimeoutMs`: Full runtime info read timeout.
+- `mekatrol.pydevice.pythonExecRawCaptureTimeoutMs`: Raw REPL command execution timeout.
+- `mekatrol.pydevice.pythonSoftRebootTimeoutMs`: Soft reboot timeout.
+- `mekatrol.pydevice.pythonHardRebootTimeoutMs`: Hard reboot wait timeout.
+- `mekatrol.pydevice.pythonSerialWriteAckTimeoutMs`: Serial write acknowledgement timeout.
 
 ## Known Issues
 
