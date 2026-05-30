@@ -115,6 +115,16 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "mekatrol.pydevice.pullmirrorfromdevice",
+        "title": "Pull Device File(s) to Mirror",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mekatrol.pydevice.pushmirrortodevice",
+        "title": "Push Mirror File(s) to Device",
+        "icon": "$(cloud-upload)"
+      },
+      {
         "command": "mekatrol.pydevice.opencomputersyncitem",
         "title": "Open Computer Sync Item"
       },
@@ -309,6 +319,14 @@
           "when": "false"
         },
         {
+          "command": "mekatrol.pydevice.pullmirrorfromdevice",
+          "when": "false"
+        },
+        {
+          "command": "mekatrol.pydevice.pushmirrortodevice",
+          "when": "false"
+        },
+        {
           "command": "mekatrol.pydevice.opencomputersyncitem",
           "when": "false"
         },
@@ -469,6 +487,16 @@
           "command": "mekatrol.pydevice.viewdeviceinfo",
           "when": "explorerResourceIsFolder && resourcePath =~ /(^|[\\\\/])device-mirror[\\\\/][^\\\\/]+$/",
           "group": "pydevice@11"
+        },
+        {
+          "command": "mekatrol.pydevice.pullmirrorfromdevice",
+          "when": "resourcePath =~ /(^|[\\\\/])device-mirror[\\\\/][^\\\\/]+([\\\\/].*)?$/",
+          "group": "pydevice-mirror@1"
+        },
+        {
+          "command": "mekatrol.pydevice.pushmirrortodevice",
+          "when": "resourcePath =~ /(^|[\\\\/])device-mirror[\\\\/][^\\\\/]+([\\\\/].*)?$/",
+          "group": "pydevice-mirror@2"
         },
         {
           "command": "mekatrol.pydevice.excludedevicefilefromsync",

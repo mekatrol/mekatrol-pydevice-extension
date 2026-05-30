@@ -66,6 +66,8 @@ const commandSyncFromDeviceId = 'mekatrol.pydevice.syncfromdevice';
 const commandSyncToDeviceId = 'mekatrol.pydevice.synctodevice';
 const commandSyncNodeFromDeviceId = 'mekatrol.pydevice.syncnodefromdevice';
 const commandSyncNodeToDeviceId = 'mekatrol.pydevice.syncnodetodevice';
+const commandPullMirrorFromDeviceId = 'mekatrol.pydevice.pullmirrorfromdevice';
+const commandPushMirrorToDeviceId = 'mekatrol.pydevice.pushmirrortodevice';
 const commandOpenComputerItemId = 'mekatrol.pydevice.opencomputersyncitem';
 const commandPullAndOpenDeviceItemId = 'mekatrol.pydevice.pullandopendeviceitem';
 const commandOpenDeviceFileId = 'mekatrol.pydevice.opendevicefile';
@@ -4099,6 +4101,92 @@ class DeviceSyncModel {
     await fs.copyFile(sourceAbsolutePath, destinationAbsolutePath);
   }
 
+  async pullMirrorFromDevice(target?: vscode.Uri): Promise<void> {
+    const mirrorTarget = this.getMirrorTargetFromUri(target);
+    const mirrorPath = target?.fsPath;
+    if (!mirrorTarget || !mirrorPath) {
+      showWarningMessage('Select a device mirror file or folder to pull from the device.');
+      return;
+    }
+
+    const board = getConnectedPyDevice(mirrorTarget.deviceId);
+    if (!board) {
+      showWarningMessage(`Connect ${this.getDeviceDisplayName(mirrorTarget.deviceId)} before pulling mirror files.`);
+      return;
+    }
+
+    if (!mirrorTarget.relativePath) {
+      await this.refreshDeviceMirror(mirrorTarget.deviceId, board);
+      await this.refresh(true, false);
+      showInformationMessage(`Pulled device files into the mirror for ${this.getDeviceDisplayName(mirrorTarget.deviceId)}.`);
+      return;
+    }
+
+    const deviceEntries = await listDeviceEntries(board);
+    const deviceEntry = deviceEntries.find((entry) => toRelativePath(entry.relativePath) === mirrorTarget.relativePath);
+    if (!deviceEntry) {
+      showWarningMessage(`The device path "/${mirrorTarget.relativePath}" does not exist.`);
+      return;
+    }
+
+    try {
+      const localStat = await fs.stat(mirrorPath);
+      if (localStat.isDirectory() !== deviceEntry.isDirectory) {
+        await fs.rm(mirrorPath, { recursive: true, force: true });
+      }
+    } catch {
+      // The local mirror path does not exist yet.
+    }
+
+    await this.copyDevicePathToComputer(board, mirrorTarget.relativePath, mirrorPath, deviceEntry.isDirectory);
+    await this.refresh(true, false);
+    showInformationMessage(`Pulled "/${mirrorTarget.relativePath}" from the device into its mirror.`);
+  }
+
+  async pushMirrorToDevice(target?: vscode.Uri): Promise<void> {
+    const mirrorTarget = this.getMirrorTargetFromUri(target);
+    const mirrorPath = target?.fsPath;
+    if (!mirrorTarget || !mirrorPath) {
+      showWarningMessage('Select a device mirror file or folder to push to the device.');
+      return;
+    }
+
+    const board = getConnectedPyDevice(mirrorTarget.deviceId);
+    if (!board) {
+      showWarningMessage(`Connect ${this.getDeviceDisplayName(mirrorTarget.deviceId)} before pushing mirror files.`);
+      return;
+    }
+
+    let localStat;
+    try {
+      localStat = await fs.stat(mirrorPath);
+    } catch {
+      showWarningMessage('The selected mirror file or folder no longer exists.');
+      return;
+    }
+
+    const deviceEntries = await listDeviceEntries(board);
+    const deviceEntry = deviceEntries.find((entry) => toRelativePath(entry.relativePath) === mirrorTarget.relativePath);
+    if (mirrorTarget.relativePath && deviceEntry && deviceEntry.isDirectory !== localStat.isDirectory()) {
+      await deleteDevicePath(board, mirrorTarget.relativePath);
+    }
+
+    await this.copyComputerPathToDevice(board, mirrorPath, mirrorTarget.relativePath, localStat.isDirectory());
+    await this.refresh(true, false);
+
+    const changedFiles = localStat.isDirectory()
+      ? (await scanComputerSyncEntries(mirrorPath))
+        .filter((entry) => !entry.isDirectory)
+        .map((entry) => toRelativePath(path.posix.join(mirrorTarget.relativePath, entry.relativePath)))
+      : [mirrorTarget.relativePath];
+    if (changedFiles.length > 0 && this.notifyDeviceFilesChanged) {
+      await this.notifyDeviceFilesChanged(changedFiles);
+    }
+
+    const label = mirrorTarget.relativePath ? `"/${mirrorTarget.relativePath}"` : 'device mirror files';
+    showInformationMessage(`Pushed ${label} to ${this.getDeviceDisplayName(mirrorTarget.deviceId)}.`);
+  }
+
   private async copyComputerPathToDevice(
     destinationBoard: NonNullable<ReturnType<typeof getConnectedPyDevice>>,
     sourceAbsolutePath: string,
@@ -7481,6 +7569,8 @@ export const initDeviceSyncExplorer = async (context: vscode.ExtensionContext, f
   context.subscriptions.push(vscode.commands.registerCommand(commandSyncToDeviceId, async () => model.syncToDevice()));
   context.subscriptions.push(vscode.commands.registerCommand(commandSyncNodeFromDeviceId, async (node?: SyncNode) => model.syncNodeFromDevice(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandSyncNodeToDeviceId, async (node?: SyncNode) => model.syncNodeToDevice(node)));
+  context.subscriptions.push(vscode.commands.registerCommand(commandPullMirrorFromDeviceId, async (target?: vscode.Uri) => model.pullMirrorFromDevice(target)));
+  context.subscriptions.push(vscode.commands.registerCommand(commandPushMirrorToDeviceId, async (target?: vscode.Uri) => model.pushMirrorToDevice(target)));
   context.subscriptions.push(vscode.commands.registerCommand(commandOpenComputerItemId, async (node: SyncNode) => model.openComputerNode(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandPullAndOpenDeviceItemId, async (node: SyncNode) => model.pullDeviceNodeAndOpen(node)));
   context.subscriptions.push(vscode.commands.registerCommand(commandOpenDeviceFileId, async (node?: SyncNode) => model.openDeviceFile(node)));

@@ -10,6 +10,7 @@ Mekatrol PyDevice is a VS Code extension for developing against Python devices w
 | Library Mapping | Maps device library roots to dedicated computer folders so library code can be managed independently from a device’s main mapped folder. | [Library Mapping](#library-mapping-computer-folder--device-library-root) |
 | File Difference Comparison | Compares a device file against its computer sync file using VS Code diff view. | [File Difference Comparison](#file-difference-comparison) |
 | Excluding Files | Excludes selected device paths from sync operations to protect **passwords** and **secrets** stored on a device. | [Exclude Files From Sync](#exclude-files-from-sync) |
+| Mirror-Only Transfers | Copies files between a connected device and its managed mirror without touching mapped computer folders. | [Mirror-Only Transfers](#mirror-only-transfers) |
 | Computer / Device Explorer View | Shows a dual-tree explorer (COMPUTER + DEVICE) with context actions for open, sync, compare, and mapping. | [Computer / Device Explorer View](#computer--device-explorer-view) |
 | Multi-Device Connections | Connects and manages multiple boards at the same time, with per-device status and operations. | [Multi-Device Connections](#multi-device-connections) |
 | REPL Window | Provides an interactive REPL panel with per-device command history and quick switching between connected devices. | [REPL Window](#repl-window) |
@@ -109,6 +110,10 @@ Paths can be excluded from synchronization to avoid overwriting/deleting specifi
 - Temporary/generated files.
 - Device-specific runtime artifacts.
 - Paths managed externally.
+
+## Mirror-Only Transfers
+
+Right-click a file, folder, or device root under `device-mirror/<deviceId>` to pull from the device into the managed mirror or push from the managed mirror to the device. These copy actions are separate from synchronization: they do not update mapped computer folders and they intentionally allow excluded paths.
 
 ## Computer / Device Explorer View
 
