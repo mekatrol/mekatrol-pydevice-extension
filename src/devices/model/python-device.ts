@@ -27,4 +27,10 @@ export interface PythonDevice {
     onStdoutChunk?: (chunk: string) => void,
     onStderrChunk?: (chunk: string) => void
   ): Promise<{ stdout: string; stderr: string }>;
+  execRawCaptureStreamingUntilCancelled(
+    command: string,
+    signal: AbortSignal,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }>;
 }

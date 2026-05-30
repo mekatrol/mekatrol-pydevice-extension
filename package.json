@@ -607,8 +607,7 @@
               },
               "timeoutMs": {
                 "type": "number",
-                "description": "Execution timeout in milliseconds.",
-                "default": 60000
+                "description": "Optional execution timeout in milliseconds. Omit to run until the program completes or the debug session is stopped."
               }
             }
           }
@@ -618,8 +617,7 @@
             "type": "pydevice",
             "request": "launch",
             "name": "PyDevice: Run Current File",
-            "program": "${file}",
-            "timeoutMs": 60000
+            "program": "${file}"
           }
         ]
       }

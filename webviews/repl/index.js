@@ -185,18 +185,20 @@
         return;
       }
 
-      const isBusy = !!active.isExecuting || !!active.isPortRestarting;
+      const isBoardExecuting = !!active.isBoardExecuting;
+      const isBusy = !!active.isExecuting || !!active.isPortRestarting || isBoardExecuting;
       const isRestarting = !!active.isPortRestarting;
+      promptRowEl.classList.toggle('hidden', isBoardExecuting);
       inputEl.disabled = isBusy;
       if (isBusy) {
         busyIndicatorEl.classList.remove('hidden');
       } else {
         busyIndicatorEl.classList.add('hidden');
       }
-      ctrlCButtonEl.disabled = isRestarting;
-      ctrlDButtonEl.disabled = isRestarting;
-      ctrlEButtonEl.disabled = isRestarting;
-      reopenPortButtonEl.disabled = isRestarting;
+      ctrlCButtonEl.disabled = isRestarting || isBoardExecuting;
+      ctrlDButtonEl.disabled = isRestarting || isBoardExecuting;
+      ctrlEButtonEl.disabled = isRestarting || isBoardExecuting;
+      reopenPortButtonEl.disabled = isRestarting || isBoardExecuting;
       renderReopenPortButton(active);
 
       outputEl.textContent = getRenderLines(active).join('\n');

@@ -80,7 +80,6 @@ export const pyDeviceTimeoutSettings = {
 
 // Internal timeout constants (not user settings)
 export const pyDeviceInternalTimeouts = {
-  debugExecutionTimeoutMs: 60000,
   recoveryConnectAttemptTimeoutMs: 25000,
   hardRebootOwnedPortReopenDelayMinimumMs: 150,
   hardRebootSignalToggleDelayMinimumMs: 120,

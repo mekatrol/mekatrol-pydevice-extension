@@ -343,6 +343,23 @@ export class PyDeviceConnection {
     ));
   }
 
+  async execRawCaptureStreamingUntilCancelled(
+    command: string,
+    signal: AbortSignal,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void
+  ): Promise<{ stdout: string; stderr: string }> {
+    const enterRawReplTimeoutMs = this.hostServices.getTimeoutSettingMs(pyDeviceTimeoutSettings.pythonExecRawCapture);
+    return this.enqueueExclusive(() => this.execRawCaptureStreamingUnlocked(
+      command,
+      enterRawReplTimeoutMs,
+      onStdoutChunk,
+      onStderrChunk,
+      null,
+      signal
+    ));
+  }
+
   private async execRawCaptureUnlocked(command: string, timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
     return this.execRawCaptureStreamingUnlocked(command, timeoutMs);
   }
@@ -351,7 +368,9 @@ export class PyDeviceConnection {
     command: string,
     timeoutMs?: number,
     onStdoutChunk?: (chunk: string) => void,
-    onStderrChunk?: (chunk: string) => void
+    onStderrChunk?: (chunk: string) => void,
+    completionTimeoutMs?: number | null,
+    signal?: AbortSignal
   ): Promise<{ stdout: string; stderr: string }> {
     const effectiveTimeoutMs = resolveTimeoutMs(this.hostServices, pyDeviceTimeoutSettings.pythonExecRawCapture, timeoutMs);
     this.assertPortOpen();
@@ -362,9 +381,10 @@ export class PyDeviceConnection {
     await this.write(pyDeviceControlChars.ctrlD);
 
     const { stdout, stderr } = await this.waitForRawCaptureResponseStreaming(
-      effectiveTimeoutMs,
+      completionTimeoutMs === null ? undefined : completionTimeoutMs ?? effectiveTimeoutMs,
       onStdoutChunk,
-      onStderrChunk
+      onStderrChunk,
+      signal
     );
 
     await this.write(pyDeviceCommandSequences.exitRawRepl, { drain: false });
@@ -623,12 +643,18 @@ export class PyDeviceConnection {
 
     const rawPromptText = pyDeviceProtocolBuffers.rawReplPrompt;
     const softRebootText = pyDeviceProtocolBuffers.softRebootBanner;
+    const normalReplPrompt = pyDeviceProtocolBuffers.normalReplPrompt;
 
-    await this.write(pyDeviceControlChars.ctrlD);
-    await this.waitForDataContains([softRebootText, rawPromptText], timeoutMs);
-
-    await this.write(pyDeviceCommandSequences.exitRawRepl, { drain: false });
-    await this.readUntilIdle(120, 800);
+    await this.waitForDataContains(
+      [softRebootText, rawPromptText],
+      timeoutMs,
+      () => this.write(pyDeviceControlChars.ctrlD)
+    );
+    await this.waitForDataContains(
+      [normalReplPrompt],
+      timeoutMs,
+      () => this.write(pyDeviceCommandSequences.exitRawRepl, { drain: false })
+    );
   }
 
   private async enterRawReplUnlocked(timeoutMs: number): Promise<void> {
@@ -691,7 +717,11 @@ export class PyDeviceConnection {
       : this.reportError('Failed to enter raw REPL', new Error(String(lastError)));
   }
 
-  private async waitForDataContains(patterns: Buffer[], timeoutMs: number): Promise<number[]> {
+  private async waitForDataContains(
+    patterns: Buffer[],
+    timeoutMs: number,
+    initiate?: () => Promise<void>
+  ): Promise<number[]> {
     this.assertPortOpen();
 
     const bytes: number[] = [];
@@ -736,13 +766,20 @@ export class PyDeviceConnection {
       const timer = setTimeout(onTimeout, timeoutMs);
       this.serialPort!.on('data', onData);
       this.serialPort!.on('error', onError);
+      if (initiate) {
+        void initiate().catch((error: unknown) => {
+          cleanup();
+          reject(error);
+        });
+      }
     });
   }
 
   private async waitForRawCaptureResponseStreaming(
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     onStdoutChunk?: (chunk: string) => void,
-    onStderrChunk?: (chunk: string) => void
+    onStderrChunk?: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<{ stdout: string; stderr: string }> {
     this.assertPortOpen();
 
@@ -851,20 +888,32 @@ export class PyDeviceConnection {
         reject(this.reportError('Serial read failed while waiting for command response', error));
       };
 
+      const onAbort = () => {
+        cleanup();
+        reject(new Error('Raw capture command cancelled'));
+      };
+
       const onTimeout = () => {
         cleanup();
         reject(this.reportError('Timed out waiting for raw capture command completion', new Error(`Timeout after ${timeoutMs}ms`)));
       };
 
       const cleanup = () => {
-        clearTimeout(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
         this.serialPort!.off('data', onData);
         this.serialPort!.off('error', onError);
+        signal?.removeEventListener('abort', onAbort);
       };
 
-      const timer = setTimeout(onTimeout, timeoutMs);
+      const timer = timeoutMs === undefined ? undefined : setTimeout(onTimeout, timeoutMs);
       this.serialPort!.on('data', onData);
       this.serialPort!.on('error', onError);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+      }
     });
   }
 

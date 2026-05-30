@@ -52,6 +52,7 @@ interface ReplWebviewDeviceState {
   history: string[];
   isExecuting: boolean;
   isPortRestarting: boolean;
+  isBoardExecuting: boolean;
 }
 
 interface ReplWebviewState {
@@ -591,7 +592,8 @@ class ReplViewProvider implements vscode.WebviewViewProvider, vscode.Disposable 
         lines: this.devicesById.get(snapshot.deviceId)?.lines ?? [],
         history: this.devicesById.get(snapshot.deviceId)?.history ?? [],
         isExecuting: this.devicesById.get(snapshot.deviceId)?.isExecuting ?? false,
-        isPortRestarting: this.devicesById.get(snapshot.deviceId)?.isPortRestarting ?? false
+        isPortRestarting: this.devicesById.get(snapshot.deviceId)?.isPortRestarting ?? false,
+        isBoardExecuting: snapshot.executionCount > 0
       })),
       activeDeviceId: this.activeDeviceId
     };

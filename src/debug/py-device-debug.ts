@@ -14,7 +14,6 @@ import {
 import { outputChannelLogger } from '../logging/output-channel';
 import { getDeviceHostFolderMappings, loadConfiguration } from '../utils/configuration';
 import { toRelativePath } from '../utils/device-filesystem';
-import { pyDeviceInternalTimeouts } from '../constants/timeout-constants';
 import { showErrorMessage, t } from '../utils/i18n';
 import { appendDeviceReplOutput } from '../views/repl-view';
 
@@ -55,8 +54,10 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
   readonly onDidSendMessage = this.messageEmitter.event;
   private sequence = 1;
   private launchDeviceId: string | undefined;
+  private launchAbortController: AbortController | undefined;
 
   dispose(): void {
+    this.launchAbortController?.abort();
     this.messageEmitter.dispose();
   }
 
@@ -100,7 +101,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
       case 'terminate':
         this.sendResponse(request);
         if (request.command === 'disconnect' || request.command === 'terminate') {
-          this.sendEvent('terminated');
+          this.launchAbortController?.abort();
         }
         return;
       default:
@@ -111,6 +112,8 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
   private async handleLaunch(args: Record<string, unknown>): Promise<void> {
     let exitCode = 0;
     this.launchDeviceId = undefined;
+    const launchAbortController = new AbortController();
+    this.launchAbortController = launchAbortController;
 
     try {
       const programValue = typeof args.program === 'string' ? args.program : undefined;
@@ -132,7 +135,7 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
       const script = Buffer.from(content).toString('utf8');
       const timeoutMs = typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs)
         ? args.timeoutMs
-        : pyDeviceInternalTimeouts.debugExecutionTimeoutMs;
+        : undefined;
 
       const command = this.buildExecutionCommand(script, this.displayPath(targetUri));
       const streamOutput = (chunk: string, category: 'console' | 'stderr') => {
@@ -145,15 +148,23 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
         outputChannelLogger.log(normalised, true);
       };
 
-      const { stderr } = await board.execRawCaptureStreaming(
-        command,
-        timeoutMs,
-        (chunk) => streamOutput(chunk, 'console'),
-        (chunk) => {
-          exitCode = 1;
-          streamOutput(chunk, 'stderr');
-        }
-      );
+      const onStderrChunk = (chunk: string) => {
+        exitCode = 1;
+        streamOutput(chunk, 'stderr');
+      };
+      const { stderr } = timeoutMs === undefined
+        ? await board.execRawCaptureStreamingUntilCancelled(
+          command,
+          launchAbortController.signal,
+          (chunk) => streamOutput(chunk, 'console'),
+          onStderrChunk
+        )
+        : await board.execRawCaptureStreaming(
+          command,
+          timeoutMs,
+          (chunk) => streamOutput(chunk, 'console'),
+          onStderrChunk
+        );
 
       if (stderr.trim().length > 0) {
         exitCode = 1;
@@ -161,29 +172,32 @@ class PyDeviceDebugAdapter implements vscode.DebugAdapter {
 
       outputChannelLogger.log(`Run on device ${targetDeviceId} completed: ${this.displayPath(targetUri)}`, true);
     } catch (error) {
-      exitCode = 1;
-      const message = error instanceof Error ? error.message : String(error);
-      this.sendEvent('output', {
-        category: 'stderr',
-        output: this.ensureTrailingNewline(message)
-      });
-      outputChannelLogger.log(`Run on device failed: ${message}`, true);
+      if (!launchAbortController.signal.aborted) {
+        exitCode = 1;
+        const message = error instanceof Error ? error.message : String(error);
+        this.sendEvent('output', {
+          category: 'stderr',
+          output: this.ensureTrailingNewline(message)
+        });
+        outputChannelLogger.log(`Run on device failed: ${message}`, true);
+      }
     } finally {
       if (this.launchDeviceId) {
-        endBoardExecution(this.launchDeviceId);
-      }
-
-      if (this.launchDeviceId) {
+        const launchDeviceId = this.launchDeviceId;
         await softRebootConnectedPyDevice(
-          this.launchDeviceId,
-          `Device ${this.launchDeviceId} soft rebooted after debug session end.`,
-          `Failed to soft reboot device ${this.launchDeviceId} after debug session end`
+          launchDeviceId,
+          `Device ${launchDeviceId} soft rebooted after debug session end.`,
+          `Failed to soft reboot device ${launchDeviceId} after debug session end`
         );
+        endBoardExecution(launchDeviceId);
       }
 
       this.sendEvent('exited', { exitCode });
       this.sendEvent('terminated');
       this.launchDeviceId = undefined;
+      if (this.launchAbortController === launchAbortController) {
+        this.launchAbortController = undefined;
+      }
     }
   }
 
@@ -401,8 +415,7 @@ class PyDeviceDebugConfigurationProvider implements vscode.DebugConfigurationPro
         type: debugType,
         request: 'launch',
         name: 'PyDevice: Run Current File',
-        program: '${file}',
-        timeoutMs: pyDeviceInternalTimeouts.debugExecutionTimeoutMs
+        program: '${file}'
       }
     ];
   }
@@ -444,8 +457,7 @@ class PyDeviceDebugConfigurationProvider implements vscode.DebugConfigurationPro
       type: debugType,
       request: 'launch',
       name: 'PyDevice: Run Current File',
-      program: activeUri.toString(),
-      timeoutMs: pyDeviceInternalTimeouts.debugExecutionTimeoutMs
+      program: activeUri.toString()
     };
   }
 }

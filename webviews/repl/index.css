@@ -10,6 +10,7 @@
     .output { margin: 0; white-space: pre-wrap; word-break: break-word; }
     .prompt-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size); }
     .prompt-row.disabled { opacity: 0.6; }
+    .prompt-row.hidden { display: none; }
     .prompt-label { color: var(--vscode-editor-foreground); user-select: text; }
     .input { flex: 1; border: none; outline: none; background: transparent; color: var(--vscode-editor-foreground); padding: 0; font-family: inherit; font-size: inherit; }
     .busy { display: inline-flex; align-items: center; gap: 6px; color: var(--vscode-descriptionForeground); font-size: 11px; user-select: none; }
